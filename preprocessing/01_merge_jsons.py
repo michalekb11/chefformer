@@ -11,7 +11,7 @@ def add_source(data, source):
     for key, recipe_dict in data.items():
         recipe_dict['source'] = source
     return
-
+#===========================================
 # Import the raw data
 with open('data/recipes_raw_nosource_ar.json') as file:
     ar = json.load(file)
@@ -36,6 +36,18 @@ add_source(fn, 'fn')
 # Merge JSONs together
 merged_raw = {**ar, **epi, **fn}
 
+# Transform data into the desired format
+transformed_data = []
+for idx, (key, recipe) in enumerate(merged_raw.items(), start=1):
+    new_recipe = {
+        "id": idx,
+        "source": recipe.get("source", ""),
+        "title": recipe.get("title", ""),
+        "ingredients": recipe.get("ingredients", []),
+        "instructions": recipe.get("instructions", "")
+    }
+    transformed_data.append(new_recipe)
+
 # Create new json
 with open('data/recipes_raw_merged.json', 'w') as f:
-    json.dump(merged_raw, f, indent=4)
+    json.dump(transformed_data, f, indent=4)

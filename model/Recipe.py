@@ -1,5 +1,6 @@
 class Recipe:
-    def __init__(self, source: str, title: str, ingredients: list[str], instructions: str) -> None:
+    def __init__(self, id: int, source: str, title: str, ingredients: list[str], instructions: str) -> None:
+        self.id = id
         self.source = source
         self.title = title
         self.ingredients = ingredients
@@ -7,6 +8,7 @@ class Recipe:
 
     def to_dict(self):
         return {
+            'id':self.id,
             'source':self.source,
             'title':self.title,
             'ingredients':self.ingredients,
@@ -16,6 +18,7 @@ class Recipe:
     @classmethod
     def from_dict(cls, data):
         return cls(
+            id=data.get('id', -1),
             source=data.get('source', ''),
             title=data.get('title', ''),
             ingredients=data.get('ingredients', []),
@@ -23,12 +26,12 @@ class Recipe:
         )
     
     @classmethod
-    def from_mongo(cls, title, db):
-        recipe = db.recipes.find_one({"title": title})
+    def from_mongo(cls, id, db):
+        recipe = db.recipes.find_one({"id": id})
         if recipe:
             return cls.from_dict(recipe)
         else:
-            raise ValueError(f"Recipe with title '{title}' not found in the database.")
+            raise ValueError(f"Recipe with id '{id}' not found in the database.")
         
     def __str__(self) -> str:
         ingredients_str = '\n'.join([f'- {item}' for item in self.ingredients])
