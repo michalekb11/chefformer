@@ -41,10 +41,10 @@ transformed_data = []
 for idx, (key, recipe) in enumerate(merged_raw.items(), start=1):
     new_recipe = {
         "id": idx,
-        "source": recipe.get("source", ""),
-        "title": recipe.get("title", ""),
+        "source": recipe.get("source", ''),
+        "title": recipe.get("title", ''),
         "ingredients": recipe.get("ingredients", []),
-        "instructions": recipe.get("instructions", "")
+        "instructions": recipe.get("instructions", '')
     }
     transformed_data.append(new_recipe)
 

@@ -1,10 +1,10 @@
 class Recipe:
     def __init__(self, id: int, source: str, title: str, ingredients: list[str], instructions: str) -> None:
-        self.id = id
-        self.source = source
-        self.title = title
-        self.ingredients = ingredients
-        self.instructions = instructions
+        self.id = id or -1
+        self.source = source or ''
+        self.title = title or ''
+        self.ingredients = ingredients or []
+        self.instructions = instructions or ''
 
     def to_dict(self):
         return {
@@ -14,6 +14,10 @@ class Recipe:
             'ingredients':self.ingredients,
             'instructions':self.instructions
         }
+    
+    def delete_from_mongo(self, mongo):
+        mongo.delete_one(self.id)
+        return
 
     @classmethod
     def from_dict(cls, data):
@@ -22,7 +26,7 @@ class Recipe:
             source=data.get('source', ''),
             title=data.get('title', ''),
             ingredients=data.get('ingredients', []),
-            instructions=data.get('instructions')
+            instructions=data.get('instructions', '')
         )
     
     @classmethod
@@ -33,6 +37,15 @@ class Recipe:
         else:
             raise ValueError(f"Recipe with id '{id}' not found in the database.")
         
+    def to_string(self, include_id=False, include_source=False):
+        ingredients_str = '\n'.join([f'- {item}' for item in self.ingredients])
+        final_string = f"Id: {self.id}\n\nSource: {self.source}\n\nTitle: {self.title}\n\nIngredients:\n{ingredients_str}\n\nInstructions: {self.instructions}"
+        if include_source:
+            final_string = f'Source: {self.source}\n\n' + final_string
+        if include_id:
+            final_string = f'Id: {self.id}\n\n' + final_string
+        return final_string
+        
     def __str__(self) -> str:
         ingredients_str = '\n'.join([f'- {item}' for item in self.ingredients])
-        return f"Title: {self.title}\n\nIngredients:\n{ingredients_str}\n\nInstructions: {self.instructions}"
+        return f"Id: {self.id}\n\nSource: {self.source}\n\nTitle: {self.title}\n\nIngredients:\n{ingredients_str}\n\nInstructions: {self.instructions}"

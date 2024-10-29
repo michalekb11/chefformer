@@ -7,8 +7,10 @@ mongo = MongoDBClient()
 with open('./data/recipes_raw_merged.json') as f:
     recipes = json.load(f)
 
-# Insert transformed data into MongoDB
-result = mongo.collection.insert_many(recipes)
+# Clear the mongo db
+delete_result = mongo.collection.delete_many({})
+print(f"Cleared {delete_result.deleted_count} ids.")
 
-# Print inserted IDs
-print(f"Inserted {len(result.inserted_ids)} ids.")
+# Insert transformed data into MongoDB
+insert_result = mongo.collection.insert_many(recipes)
+print(f"Inserted {len(insert_result.inserted_ids)} ids.")
