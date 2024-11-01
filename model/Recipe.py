@@ -1,3 +1,5 @@
+import re
+
 class Recipe:
     def __init__(self, id: int, source: str, title: str, ingredients: list[str], instructions: str) -> None:
         self.id = id or -1
@@ -15,10 +17,19 @@ class Recipe:
             'instructions':self.instructions
         }
     
+    def to_string(self, include_id=False, include_source=False):
+        ingredients_str = '\n'.join([f'- {item}' for item in self.ingredients])
+        final_string = f"Id: {self.id}\n\nSource: {self.source}\n\nTitle: {self.title}\n\nIngredients:\n{ingredients_str}\n\nInstructions: {self.instructions}"
+        if include_source:
+            final_string = f'Source: {self.source}\n\n' + final_string
+        if include_id:
+            final_string = f'Id: {self.id}\n\n' + final_string
+        return final_string
+    
     def delete_from_mongo(self, mongo):
         mongo.delete_one(self.id)
         return
-
+    
     @classmethod
     def from_dict(cls, data):
         return cls(
@@ -37,14 +48,23 @@ class Recipe:
         else:
             raise ValueError(f"Recipe with id '{id}' not found in the database.")
         
-    def to_string(self, include_id=False, include_source=False):
-        ingredients_str = '\n'.join([f'- {item}' for item in self.ingredients])
-        final_string = f"Id: {self.id}\n\nSource: {self.source}\n\nTitle: {self.title}\n\nIngredients:\n{ingredients_str}\n\nInstructions: {self.instructions}"
-        if include_source:
-            final_string = f'Source: {self.source}\n\n' + final_string
-        if include_id:
-            final_string = f'Id: {self.id}\n\n' + final_string
-        return final_string
+    @classmethod
+    def from_string(cls, recipe_string, id=-1, source=''):
+        # Extract the title
+        title_match = re.search(r"Title:\s*(.+)", recipe_string)
+        title = title_match.group(1).strip() if title_match else ''
+
+        # Extract the ingredients
+        ingredients_match = re.search(r"Ingredients:\s*((?:- .+\n?)+)", recipe_string)
+        ingredients = ingredients_match.group(1).strip().splitlines() if ingredients_match else []
+        ingredients = [ingredient[2:].strip() for ingredient in ingredients]  # Remove "- " from each line
+
+        # Extract the instructions
+        instructions_match = re.search(r"Instructions:\s*(.+)", recipe_string, re.DOTALL)
+        instructions = instructions_match.group(1).strip() if instructions_match else ''
+
+        # Return an instance of Recipe
+        return cls(id=id, source=source, title=title, ingredients=ingredients, instructions=instructions)
         
     def __str__(self) -> str:
         ingredients_str = '\n'.join([f'- {item}' for item in self.ingredients])

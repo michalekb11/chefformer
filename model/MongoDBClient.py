@@ -14,11 +14,27 @@ class MongoDBClient:
             self.db = None
             self.collection = None
 
-    def update_many(self, recipes: list[Recipe]):
-        operations = [UpdateOne({'id':recipe.to_dict()['id']}, {'$set':recipe.to_dict()}) for recipe in recipes]
-        self.collection.bulk_write(operations)
-        print('Batch update complete.')
-        return
+    # def update_many(self, recipes: list[Recipe], batch_size=1000):
+    #     total_batches = len(recipes) // batch_size + (1 if len(recipes) % batch_size else 0)
+    #     for i in range(total_batches):
+    #         batch = recipes[i * batch_size: (i + 1) * batch_size]
+    #         operations = [UpdateOne({'id': recipe.id}, {'$set': recipe.to_dict()}) for recipe in batch]
+    #         try:
+    #             self.collection.bulk_write(operations)
+    #         except Exception as e:
+    #             print(f"Error in batch {i}: {e.details}")
+    #         print(f"Batch {i + 1}/{total_batches} update complete.")
+    #     print("All batches completed.")
+    #     return
+
+    def replace_db(self, recipes: list[Recipe]):
+        # Clear the mongo db
+        delete_result = self.collection.delete_many({})
+        print(f"Cleared {delete_result.deleted_count} ids.")
+
+        # Insert transformed data into MongoDB
+        insert_result = self.collection.insert_many([r.to_dict() for r in recipes])
+        print(f"Inserted {len(insert_result.inserted_ids)} ids.")
     
     def delete_one(self, id: int):
         assert id != -1, "ID is -1. This could delete more than one record."
