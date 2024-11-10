@@ -1,4 +1,4 @@
-from model.MongoDBClient import MongoDBClient
+from database.MongoDBClient import MongoDBClient
 import json
 
 mongo = MongoDBClient()

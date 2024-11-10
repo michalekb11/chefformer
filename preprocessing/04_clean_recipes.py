@@ -1,5 +1,5 @@
-from model.Recipe import Recipe
-from model.MongoDBClient import MongoDBClient
+from database.Recipe import Recipe
+from database.MongoDBClient import MongoDBClient
 import re
 import json
 from preprocessing.TextCleaner import TextCleaner
