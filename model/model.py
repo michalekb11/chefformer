@@ -10,9 +10,12 @@ class Embeddings(nn.Module):
     def __init__(self, model_settings: ModelSettings) -> None:
         super().__init__()
         self.token_embeddings = nn.Embedding(model_settings.vocab_size, model_settings.embedding_size)
+        self.position_embeddings = nn.Embedding(model_settings.max_context_length, model_settings.embedding_size)
 
     def forward(self, input_ids):
+        position_ids = torch.arange(input_ids.shape[1], dtype=torch.long)
         embeddings = self.token_embeddings(input_ids)
+        embeddings = embeddings + self.position_embeddings(position_ids)
         return embeddings
         
 

@@ -17,7 +17,10 @@
     - Transforming to embeddings results in the shape [batch_size, n_tokens, hidden_size].
 
 3. Positional Embeddings
-    - x
+    - Need to decide on a max context length. 512 is a good happy medium, but I'm not sure how many recipes fit into this context length. Could also choose 256 or 1024, etc.
+    - We do not have to use the same context length as GPT-2 (the tokenizer) since we are training our own model.
+    - Typical strategies include learned positional embeddings and non-learned ones. Non-learned could be utilizing a sinusoidal function to encode the position of each token.
+    - Here, we will try a learned method by allowing for an embedding vector to be created for each possible position (up to the max context length).
     
 4. Attention Mechanism
     - x
