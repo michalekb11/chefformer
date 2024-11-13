@@ -42,17 +42,22 @@
     - GELU activation is most commonly used. ReLU activation acts as more of an all or nothing gate, allowing input to pass through completely or get blocked entirely. GELU scales inputs more based on the "probability" that they are active, allowing inputs near 0 to have partial activation. ReLU discards some useful information when the inputs are below 0. GELU allows small negative values to pass through which is useful in Transformers since they need to capture small nuanced representations of words or phrases.
     - Typically the two-layer network is composed as follows: Linear layer that projects into higher dimension, GELU, Linear layer that projects back down into original dimension.
     
-7. Layer Normalization and Residual Connections
-    - x
+7. Layer Normalization and Residual (Skip) Connections
+    - Pre-layer normalization is much more stable during training (compared to post-layer normalization). Post-layer places the layer normalizations between the skip-connections. Pre-layer places the layer norms within the span of the skip connections.
     
 8. Single Decoder Block
-    - x
+    - It sounds like dropout is typically included in the following places:
+        * After each layer of the feed forward network - after activation and 2nd layer
+        * At the end of MH Attention - after concatenation but before the final representation is created
+        * After each skip connection
     
 9. Stack Decoder Blocks
-    - x
+    - The initial embeddings flow through an arbitrary number of decoder blocks.
     
 10. Final Linear and Softmax Layers
-    - x
+    - The unembedding matrix is applied to the final hidden states to convert the dimensions back to the vocabulary size (batch_size, seq_len, vocab_size).
+    - From here, a softmax is applied along the vocab_size dimension to produce a probability distribution over the vocabulary.
+    - The softmax is typically applied outside the transformer since torch functions like CrossEntropyLoss typically expect the raw logits.
     
 
 NOTE: Use MPS device for PyTorch (GPU training for macOS).
