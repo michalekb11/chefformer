@@ -6,6 +6,9 @@ from config.ModelSettings import ModelSettings
 from torchtyping import TensorType
 
 
+# Note: how do we deal with (ignore or remove) the padding tokens? 
+# Right now, they are included in the attention output since all sequences must be the same length
+# We would like to take the attention output for sequences < max_seq_len, remove the rows corresponding to the padding tokens...
 def scaled_dot_product_attention(query: TensorType['batch_size', 'seq_length', 'attn_head_dim'], 
                                  key: TensorType['batch_size', 'seq_length', 'attn_head_dim'], 
                                  value: TensorType['batch_size', 'seq_length', 'attn_head_dim']):
@@ -17,7 +20,7 @@ def scaled_dot_product_attention(query: TensorType['batch_size', 'seq_length', '
     attenion_weights[mask == 0] = float('-inf') # Set scores to -inf where tokens are masked
 
     attenion_weights = torch.softmax(attenion_weights, dim=-1) # Take softmax along rows (each token's row should sum to 1)
-    return torch.bmm(attenion_weights, value) # Value multiplication with scores... (batch_size, seq_len, output_dim aka embedding_dim)
+    return torch.bmm(attenion_weights, value) # Value multiplication with scores... (batch_size, seq_len, output_dim OR embedding_dim)
 
 
 class Embeddings(nn.Module):
