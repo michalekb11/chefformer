@@ -23,7 +23,10 @@
     - Here, we will try a learned method by allowing for an embedding vector to be created for each possible position (up to the max context length).
     
 4. Attention Mechanism
-    - x
+    - We need casual attention (masked self-attention) since the decoder can only attend to tokens that come before the current token in the sequence.
+    - Scaled dot product attention is the most common attention.
+    - D_attn for the attention weight matrix does not necessarily have to be same as embedding dimension. It can be smaller to control computational cost.
+    - D_attn is split up among the heads. If it is 512 / 8 heads = 64 per head.
     
 5. Multi-Head Attention
     - x

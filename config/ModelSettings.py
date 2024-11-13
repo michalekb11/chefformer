@@ -10,4 +10,5 @@ class ModelSettings:
     vocab_size: int = config['model']['vocab_size']
     embedding_size: int = config['model']['embedding_size']
     max_context_length: int = config['model']['max_context_length']
+    num_attn_heads: int = config['model']['num_attn_heads']
     
