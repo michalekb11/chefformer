@@ -20,7 +20,7 @@ def scaled_dot_product_attention(query: TensorType['batch_size', 'seq_length', '
     attenion_weights[mask == 0] = float('-inf') # Set scores to -inf where tokens are masked
 
     attenion_weights = torch.softmax(attenion_weights, dim=-1) # Take softmax along rows (each token's row should sum to 1)
-    return torch.bmm(attenion_weights, value) # Value multiplication with scores... (batch_size, seq_len, output_dim OR embedding_dim)
+    return torch.bmm(attenion_weights, value) # Value multiplication with scores... (batch_size, seq_len, attn_head_output_dim)
 
 
 class Embeddings(nn.Module):
@@ -47,20 +47,47 @@ class AttentionHead(nn.Module):
                            bias=True)
         self.v = nn.Linear(in_features=model_settings.embedding_size, 
                            out_features=model_settings.embedding_size // model_settings.num_attn_heads,
-                           bias=True)
+                           bias=True) # After each projection shape will be (batch_size, seq_len, attn_input_dim) where attn_input_dim = hidden_dim // n_attn_heads
 
     def forward(self, hidden_state: TensorType['batch_size', 'seq_len', 'hidden_dim']):
         return scaled_dot_product_attention(self.q(hidden_state), self.k(hidden_state), self.v(hidden_state))
+    
 
-       
+class MultiHeadMaskedSelfAttention(nn.Module):
+    def __init__(self, model_settings: ModelSettings) -> None:
+        super().__init__()
+        self.attn_heads = nn.ModuleList([AttentionHead(model_settings) for _ in range(model_settings.num_attn_heads)])
+        self.output_projection = nn.Linear(model_settings.embedding_size, model_settings.embedding_size, bias=True)
+        
+    def forward(self, hidden_state: TensorType['batch_size', 'seq_len', 'hidden_dim']):
+        attn_outputs = torch.cat([head(hidden_state) for head in self.attn_heads], dim=-1)
+        return self.output_projection(attn_outputs)
 
-class MultiHeadMaskedSelfAttention():
-    pass
+class PositionWiseFeedForward(nn.Module):
+    def __init__(self, model_settings: ModelSettings) -> None:
+        super().__init__()
+        self.f1 = nn.Linear(model_settings.embedding_size, 4 * model_settings.embedding_size) # To higher dimension (could specify an intermediate size in settings if preferred)
+        self.f2 = nn.Linear(4 * model_settings.embedding_size, model_settings.embedding_size) # Back to original dimension
+        self.gelu = nn.GELU()
+        self.dropout = nn.Dropout(model_settings.dropout_prob)
 
-
+    def forward(self, hidden_state: TensorType['batch_size', 'seq_len', 'hidden_dim']):
+        x = self.f1(hidden_state)
+        x = self.gelu(x)
+        x = self.dropout(x)
+        x = self.f2(x)
+        return x
 
 class DecoderBlock(nn.Module):
-    pass
+    def __init__(self, model_settings: ModelSettings) -> None:
+        super().__init__()
+        self.MultiHeadMaskedSelfAttention = MultiHeadMaskedSelfAttention(model_settings)
+        self.PositionWiseFeedForward = PositionWiseFeedForward(model_settings)
+        #self.layer_norm = nn.LayerNorm(______)
+        self.dropout = nn.Dropout(model_settings.dropout_prob)
+
+    def forward(self, hidden_state: TensorType['batch_size', 'seq_len', 'hidden_dim']):
+        pass
 
 
 class Chefformer(nn.Module):
@@ -69,18 +96,41 @@ class Chefformer(nn.Module):
         self.tokenizer: AutoTokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.Embeddings = Embeddings(model_settings)
+        self.DecoderBlocks = nn.ModuleList([DecoderBlock(model_settings) for _ in range(model_settings.num_layers)])
+        
+
+        # Only used for testing purposes
         self.AttentionHead = AttentionHead(model_settings)
+        self.MultiHeadMaskedSelfAttention = MultiHeadMaskedSelfAttention(model_settings)
+        self.PositionWiseFeedForward = PositionWiseFeedForward(model_settings)
+
+    def forward(self, input: list[str]):
+        encodings = self.tokenizer(input, return_tensors='pt', padding=True, truncation=True)
+        embeddings = self.Embeddings(encodings.input_ids)
+        # Add decoder blocks here...
 
 
+    # Helper functions to test components along the way
     def get_embeddings(self, input: list[str]):
         encodings = self.tokenizer(input, return_tensors='pt', padding=True, truncation=True)
         embeddings = self.Embeddings(encodings.input_ids)
-        
         return embeddings
     
-
     def test_attention_head(self, input: list[str]):
         embeddings = self.get_embeddings(input)
         attn_output = self.AttentionHead(embeddings)
         return attn_output
+    
+    def test_multihead_masked_self_attention(self, input: list[str]):
+        embeddings = self.get_embeddings(input)
+        attn_output = self.MultiHeadMaskedSelfAttention(embeddings)
+        return attn_output
+    
+    def test_feed_forward(self, input: list[str]):
+        embeddings = self.get_embeddings(input)
+        attn_output = self.MultiHeadMaskedSelfAttention(embeddings)
+        ff_output = self.PositionWiseFeedForward(attn_output)
+        return ff_output
+
+
     
