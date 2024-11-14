@@ -5,6 +5,12 @@ from transformers import AutoTokenizer
 from config.ModelSettings import ModelSettings
 from torchtyping import TensorType
 
+########
+#self.tokenizer: AutoTokenizer = tokenizer
+#self.tokenizer.pad_token = self.tokenizer.eos_token
+#x = self.tokenizer(x, return_tensors='pt', padding=True, truncation=True) # Encodings
+########
+
 
 class Embeddings(nn.Module):
     def __init__(self, model_settings: ModelSettings) -> None:
@@ -35,9 +41,6 @@ class AttentionHead(nn.Module):
                            out_features=model_settings.embedding_size // model_settings.num_attn_heads,
                            bias=True) # After each projection shape will be (batch_size, seq_len, attn_input_dim) where attn_input_dim = hidden_dim // n_attn_heads
     
-    # Note: how do we deal with (ignore or remove) the padding tokens? 
-    # Right now, they are included in the attention output since all sequences must be the same length
-    # We would like to take the attention output for sequences < max_seq_len, remove the rows corresponding to the padding tokens...
     def scaled_dot_product_attention(self,
                                      query: TensorType['batch_size', 'seq_length', 'attn_head_dim'], 
                                      key: TensorType['batch_size', 'seq_length', 'attn_head_dim'], 
@@ -106,10 +109,8 @@ class DecoderBlock(nn.Module):
 
 
 class Chefformer(nn.Module):
-    def __init__(self, tokenizer: AutoTokenizer, model_settings: ModelSettings = ModelSettings()):
+    def __init__(self, model_settings: ModelSettings = ModelSettings()):
         super().__init__()
-        self.tokenizer: AutoTokenizer = tokenizer
-        self.tokenizer.pad_token = self.tokenizer.eos_token
         self.Embeddings = Embeddings(model_settings)
         self.DecoderBlocks = nn.ModuleList([DecoderBlock(model_settings) for _ in range(model_settings.num_layers)])
         self.layer_norm_final = nn.LayerNorm(model_settings.embedding_size)
@@ -122,9 +123,8 @@ class Chefformer(nn.Module):
         self.MultiHeadMaskedSelfAttention = MultiHeadMaskedSelfAttention(model_settings)
         self.PositionWiseFeedForward = PositionWiseFeedForward(model_settings)
 
-    def forward(self, x: list[str]):
-        x = self.tokenizer(x, return_tensors='pt', padding=True, truncation=True) # Encodings
-        x = self.Embeddings(x.input_ids) # Embeddings
+    def forward(self, x: TensorType['batch_size', 'seq_len', 'hidden_dim']):
+        x = self.Embeddings(x) # Embeddings
         for block in self.DecoderBlocks: # All of the decoder blocks (attention + feed forward)
             x = block(x)
         x = self.layer_norm_final(x) # Final layer norm
@@ -134,28 +134,27 @@ class Chefformer(nn.Module):
 
 
     # Helper functions to test components along the way
-    def get_embeddings(self, input: list[str]):
-        encodings = self.tokenizer(input, return_tensors='pt', padding=True, truncation=True)
-        embeddings = self.Embeddings(encodings.input_ids)
+    def get_embeddings(self, input_ids):
+        embeddings = self.Embeddings(input_ids)
         return embeddings
     
-    def test_attention_head(self, input: list[str]):
+    def test_attention_head(self, input_ids):
         embeddings = self.get_embeddings(input)
         attn_output = self.AttentionHead(embeddings)
         return attn_output
     
-    def test_multihead_masked_self_attention(self, input: list[str]):
+    def test_multihead_masked_self_attention(self, input_ids):
         embeddings = self.get_embeddings(input)
         attn_output = self.MultiHeadMaskedSelfAttention(embeddings)
         return attn_output
     
-    def test_feed_forward(self, input: list[str]):
+    def test_feed_forward(self, input_ids):
         embeddings = self.get_embeddings(input)
         attn_output = self.MultiHeadMaskedSelfAttention(embeddings)
         ff_output = self.PositionWiseFeedForward(attn_output)
         return ff_output
     
-    def test_decoder_block(self, input: list[str]):
+    def test_decoder_block(self, input_ids):
         embeddings = self.get_embeddings(input)
         decoder_block_output = self.DecoderBlocks[0](embeddings)
         return decoder_block_output
