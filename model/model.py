@@ -158,6 +158,10 @@ class Chefformer(nn.Module):
         embeddings = self.get_embeddings(input)
         decoder_block_output = self.DecoderBlocks[0](embeddings)
         return decoder_block_output
-
-
     
+    def count_total_parameters(self):
+        total_params = 0
+        for p in self.parameters():
+            total_params += p.numel()
+        print(f"Total parameters: {total_params/1000**2:.1f}M ")
+        return total_params
