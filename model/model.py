@@ -1,7 +1,7 @@
 from typing import Optional
 import torch
 from torch import nn
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, GPT2Tokenizer
 from config.ModelSettings import ModelSettings
 from torchtyping import TensorType
 

@@ -19,7 +19,7 @@ class Recipe:
     
     def to_string(self, include_id=False, include_source=False):
         ingredients_str = '\n'.join([f'- {item}' for item in self.ingredients])
-        final_string = f"Id: {self.id}\n\nSource: {self.source}\n\nTitle: {self.title}\n\nIngredients:\n{ingredients_str}\n\nInstructions: {self.instructions}"
+        final_string = f"Title: {self.title}\n\nIngredients:\n{ingredients_str}\n\nInstructions: {self.instructions}"
         if include_source:
             final_string = f'Source: {self.source}\n\n' + final_string
         if include_id:
