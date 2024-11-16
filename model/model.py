@@ -122,7 +122,7 @@ class Chefformer(nn.Module):
         self.MultiHeadMaskedSelfAttention = MultiHeadMaskedSelfAttention(model_settings)
         self.PositionWiseFeedForward = PositionWiseFeedForward(model_settings)
 
-    def forward(self, x: TensorType['batch_size', 'seq_len', 'hidden_dim']):
+    def forward(self, x: TensorType['batch_size', 'seq_len']):
         x = self.Embeddings(x) # Embeddings
         for block in self.DecoderBlocks: # All of the decoder blocks (attention + feed forward)
             x = block(x)
