@@ -5,6 +5,8 @@ from transformers import AutoTokenizer, GPT2Tokenizer
 from config.settings import ModelSettings
 from torchtyping import TensorType
 
+#device = torch.device("mps")
+
 ########
 #self.tokenizer: AutoTokenizer = tokenizer
 #self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -19,7 +21,7 @@ class Embeddings(nn.Module):
         self.dropout = nn.Dropout(model_settings.dropout_prob)
 
     def forward(self, input_ids: TensorType['batch_size', 'seq_len']) -> TensorType['batch_size', 'seq_len', 'hidden_dim']: # input_ids shape (batch size, seq length (with padding)) 
-        position_ids = torch.arange(input_ids.shape[1], dtype=torch.long).unsqueeze(0).expand(input_ids.shape[0], -1) # (batch size, seq length)
+        position_ids = torch.arange(input_ids.shape[1], dtype=torch.long).unsqueeze(0).expand(input_ids.shape[0], -1).to(input_ids.device) # (batch size, seq length)
         embeddings = self.token_embeddings(input_ids) # (batch size, seq_length, hidden dim)
         embeddings = embeddings + self.position_embeddings(position_ids) # (batch size, seq_length, hidden dim)
         # Optional layer norm here. Add if seeing gradient stability issues during training.

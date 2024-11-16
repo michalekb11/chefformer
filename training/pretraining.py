@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader
 from config.settings import PreTrainingSettings
 from model.model import Chefformer
+from torch.nn.utils import clip_grad_norm_
 
 # Create collate function for data loader
 def batch_collator(batch: list[(TensorType['max_context_length'], TensorType['max_context_length'])]):
@@ -35,7 +36,7 @@ c4 = ChunkedTextDataset(c4, tokenizer=tokenizer, chunk_size=512, overlap_size=50
 dataloader = DataLoader(c4, batch_size=PreTrainingSettings.batch_size, collate_fn=batch_collator)
 
 # Optimizer, loss, and model
-model = Chefformer().to(device)
+model = Chefformer().to(device, dtype=torch.float32)
 optimizer = torch.optim.AdamW(model.parameters(), 
                               lr=PreTrainingSettings.learning_rate, 
                               weight_decay=PreTrainingSettings.weight_decay)
@@ -61,11 +62,12 @@ for epoch in range(PreTrainingSettings.num_epochs):
 
         # Update weights
         loss.backward() 
+        clip_grad_norm_(model.parameters(), PreTrainingSettings.gradient_clipping) # clip gradient values
         optimizer.step()  
         optimizer.zero_grad()  
 
         # Optionally, track loss for logging purposes
-        if i % 100 == 0:  # Every 100 iterations
-            print(f"Epoch {epoch+1}, Iteration {i}, Loss: {loss.item()}")
+        #if i % 100 == 0:  # Every 100 iterations
+        print(f"Epoch {epoch+1}, Iteration {i}, Loss: {loss.item()}")
 
         
