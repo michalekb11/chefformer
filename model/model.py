@@ -2,7 +2,7 @@ from typing import Optional
 import torch
 from torch import nn
 from transformers import AutoTokenizer, GPT2Tokenizer
-from config.ModelSettings import ModelSettings
+from config.settings import ModelSettings
 from torchtyping import TensorType
 
 ########
@@ -10,7 +10,6 @@ from torchtyping import TensorType
 #self.tokenizer.pad_token = self.tokenizer.eos_token
 #x = self.tokenizer(x, return_tensors='pt', padding=True, truncation=True) # Encodings
 ########
-
 
 class Embeddings(nn.Module):
     def __init__(self, model_settings: ModelSettings) -> None:
