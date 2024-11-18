@@ -21,7 +21,10 @@ class PreTrainingSettings:
     num_epochs: int = config['training']['num_epochs']
     weight_decay: float = config['training']['weight_decay']
     gradient_clipping: float = config['training']['gradient_clipping']
-    warmup_steps: int = config['training']['warmup_steps']
+    warmup_iters: int = config['training']['warmup_iters']
     save_checkpoint_every: int = config['training']['save_checkpoint_every']
     checkpoint_dir: str = config['training']['checkpoint_dir']
+    decay_start_iter: int = config['training']['decay_start_iter']
+    decay_total_iters: int = config['training']['decay_total_iters']
+    gradient_accumulation_steps: int = config['training']['gradient_accumulation_steps']
     

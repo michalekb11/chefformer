@@ -170,3 +170,6 @@ data/
 
 # Configuration
 config.yaml
+
+# PyTorch checkpoints
+checkpoints/
