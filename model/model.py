@@ -103,7 +103,6 @@ class DecoderBlock(nn.Module):
         x = self.layer_norm1(hidden_state)
         x = self.MultiHeadMaskedSelfAttention(x) + hidden_state # First skip connection
         x = self.dropout(x)
-
         x = self.PositionWiseFeedForward(self.layer_norm2(x)) + x # Second skip connection
         x = self.dropout(x)
         return x

@@ -27,4 +27,6 @@ class PreTrainingSettings:
     decay_start_iter: int = config['training']['decay_start_iter']
     decay_total_iters: int = config['training']['decay_total_iters']
     gradient_accumulation_steps: int = config['training']['gradient_accumulation_steps']
+    validation_loop_steps: int = config['training']['validation_loop_steps']
+    validate_every: int = config['training']['validate_every']
     
