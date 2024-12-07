@@ -2,6 +2,7 @@ import os
 import torch
 from config.settings import PreTrainingSettings
 from torchtyping import TensorType
+import csv
 
 #=======Helper functions=======
 # Save a checkpoint
@@ -52,3 +53,27 @@ def init_weights(m):
     if isinstance(m, torch.nn.Linear):
         torch.nn.init.xavier_uniform_(m.weight) # or _normal_()
         m.bias.data.fill_(0.01)
+
+def save_training_loss(training_step: int, training_loss: float, accuracy: float):
+    with open('./checkpoints/training_loss.csv', 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([training_step, accuracy, training_loss])
+    return
+
+def save_validation_loss(training_step: int, accuracy: float, val_loss: float):
+    with open('./checkpoints/validation_loss.csv', 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([training_step, accuracy, val_loss])
+    return
+
+def save_learning_rate(training_step: int, lr: float):
+    with open('./checkpoints/learning_rate.csv', 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([training_step, lr])
+    return
+
+def save_gradient_norm(training_step: int, gradient_norm: float):
+    with open('./checkpoints/gradient_norm.csv', 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([training_step, gradient_norm])
+    return

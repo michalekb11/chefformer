@@ -173,3 +173,6 @@ config.yaml
 
 # PyTorch checkpoints
 checkpoints/
+
+# Logs
+logs/
