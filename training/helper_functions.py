@@ -36,8 +36,8 @@ def lr_schedule(step):
     if step < PreTrainingSettings.warmup_iters:
         return step / PreTrainingSettings.warmup_iters  # Linear warmup
     elif step >= PreTrainingSettings.decay_start_iter:
-        progress = (step - PreTrainingSettings.decay_start_iter) / PreTrainingSettings.decay_total_iters
-        return max(0.0, 0.5 * (1.0 + torch.cos(progress * torch.pi)))  # Cosine decay
+        progress = torch.tensor((step - PreTrainingSettings.decay_start_iter), dtype=torch.float32) / PreTrainingSettings.decay_total_iters
+        return max(0.0, 0.5 * (1.0 + torch.cos(progress * torch.pi)).item())  # Cosine decay
     else:
         return 1.0
     
