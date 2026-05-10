@@ -1,0 +1,79 @@
+import torch
+import os
+from transformers import AutoTokenizer
+from configs.training.settings import pretraining_settings
+from src.shared.model.model import Chefformer
+from src.training.engine import Trainer
+from src.training.data_factory import get_dataloaders
+from src.training.utils.training_loop_utils import load_checkpoint, init_weights, lr_schedule
+from torch.optim.lr_scheduler import LambdaLR
+from loggers.console_logger import ConsoleLogger
+from loggers.csv_logger import CSVLogger
+from loggers.composite_logger import CompositeMetricLogger
+
+def run(eval_only=False, task='pretrain', checkpoint_path=None):
+    # Initialize Loggers
+    logger = ConsoleLogger(__name__)
+    csv_logger = CSVLogger()
+    metric_logger = CompositeMetricLogger([csv_logger])
+    
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    logger.info(f"Using device: {device}")
+
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    tokenizer.pad_token = tokenizer.eos_token
+
+    # Initialize Data
+    train_loader, val_loader = get_dataloaders(task, tokenizer, pretraining_settings)
+
+    # Initialize Model & Optimization
+    model = Chefformer().to(device)
+    model.apply(init_weights)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=pretraining_settings.learning_rate)
+    scheduler = LambdaLR(optimizer, lr_lambda=lr_schedule)
+    criterion = torch.nn.CrossEntropyLoss(reduction='none')
+
+    trainer = Trainer(model, optimizer, scheduler, criterion, device, pretraining_settings, metric_logger, logger)
+
+    # Resume from checkpoint
+    start_epoch, start_step = 0, 0
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        # load_checkpoint should handle dataloader.load_state_dict() internally 
+        # to prevent the "exponential skip" issue.
+        start_epoch, start_step = load_checkpoint(model, optimizer, scheduler, train_loader, checkpoint_path)
+        logger.info(f"Resumed from {checkpoint_path} at epoch {start_epoch}, step {start_step}")
+
+    if eval_only:
+        avg_loss, acc = trainer.evaluate(val_loader, pretraining_settings.validation_loop_steps)
+        logger.info(f"Eval results - Loss: {avg_loss:.4f}, Acc: {acc:.4f}")
+        return
+
+    # Main Training Loop
+    for epoch in range(start_epoch, pretraining_settings.num_epochs):
+        for step, (input_ids, attention_mask) in enumerate(train_loader):
+            input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
+            
+            actual_step = start_step + step
+            loss, acc = trainer.train_step(input_ids, attention_mask, actual_step)
+
+            #if loss is not None:
+            #    logger.info(f"Epoch {epoch} | Step {actual_step} | Loss: {loss:.4f} | Acc: {acc:.4f}")
+
+            # Periodic Validation
+            if (actual_step + 1) % pretraining_settings.validate_every == 0:
+                val_loss, val_acc = trainer.evaluate(val_loader, pretraining_settings.validation_loop_steps)
+                logger.info(f"Validation at step {actual_step+1}: Loss {val_loss:.4f}, Acc {val_acc:.4f}")
+
+            # Periodic Checkpointing
+            if (actual_step + 1) % pretraining_settings.save_checkpoint_every == 0:
+                trainer.save(train_loader, epoch, actual_step + 1)
+
+        # End of epoch checkpoint
+        trainer.save(train_loader, epoch + 1, 0)
+        start_step = 0
+
+if __name__ == '__main__':
+    # Example usages:
+    # Pretrain: run(task='pretrain')
+    # Eval only: run(eval_only=True, checkpoint_path='./checkpoints/latest.pth')
+    run(checkpoint_path='./checkpoints/checkpoint_epoch0_step12000.pth')

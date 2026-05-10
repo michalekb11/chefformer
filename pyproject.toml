@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Chefformer"
+version = "0.1.0"
+description = "A decoder-only transformer for recipe generation."
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "torch==2.10.0",
+    "transformers==4.46.1",
+    "datasets==3.1.0",
+    "torchdata==0.11.0",
+    "pydantic-settings==2.6.0",
+    "pymongo==4.10.1",
+    "torchtyping==0.1.5",
+    "langchain-core==0.3.13",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["configs*, src*"]
+exclude = ["tests*"]

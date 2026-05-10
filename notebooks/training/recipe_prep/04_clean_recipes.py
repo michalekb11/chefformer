@@ -1,8 +1,8 @@
-from database.Recipe import Recipe
-from database.MongoDBClient import MongoDBClient
+from src.training.database.Recipe import Recipe
+from src.training.database.MongoDBClient import MongoDBClient
 import re
 import json
-from preprocessing.TextCleaner import TextCleaner
+from src.training.utils.data_utils import TextCleaner
 
 #manual_delete_id_set = set([])
 

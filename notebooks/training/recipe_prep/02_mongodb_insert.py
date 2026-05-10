@@ -1,4 +1,4 @@
-from database.MongoDBClient import MongoDBClient
+from src.training.database.MongoDBClient import MongoDBClient
 import json
 
 mongo = MongoDBClient()

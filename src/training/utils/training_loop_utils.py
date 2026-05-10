@@ -1,12 +1,13 @@
 import os
 import torch
-from config.settings import PreTrainingSettings
 from torchtyping import TensorType
 import csv
+from loggers.console_logger import ConsoleLogger
 
-#=======Helper functions=======
+logger = ConsoleLogger(__name__)
+
 # Save a checkpoint
-def save_checkpoint(model, optimizer, scheduler, dataloader, epoch, step, checkpoint_dir=PreTrainingSettings.checkpoint_dir):
+def save_checkpoint(model, optimizer, scheduler, dataloader, epoch, step, checkpoint_dir="checkpoints"):
     os.makedirs(checkpoint_dir, exist_ok=True)
     checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch{epoch}_step{step}.pth")
     torch.save({
@@ -17,12 +18,12 @@ def save_checkpoint(model, optimizer, scheduler, dataloader, epoch, step, checkp
         'epoch': epoch,
         'step': step
     }, checkpoint_path)
-    print(f"Saved checkpoint to: {checkpoint_path}")
+    logger.info(f"Saved checkpoint to: {checkpoint_path}")
     return
 
 # Load a checkpoint
 def load_checkpoint(model, optimizer, scheduler, dataloader, checkpoint_path):
-    print(f"Loading checkpoint from: {checkpoint_path}")
+    logger.info(f"Loading checkpoint from: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -31,12 +32,12 @@ def load_checkpoint(model, optimizer, scheduler, dataloader, checkpoint_path):
     return checkpoint['epoch'], checkpoint['step']
 
 # Define warmup and decay schedule
-def lr_schedule(step):
+def lr_schedule(step, warmup_iters, decay_start_iter, decay_total_iters):
     """Should return a multiplier for the learning rate"""
-    if step < PreTrainingSettings.warmup_iters:
-        return step / PreTrainingSettings.warmup_iters  # Linear warmup
-    elif step >= PreTrainingSettings.decay_start_iter:
-        progress = torch.tensor((step - PreTrainingSettings.decay_start_iter), dtype=torch.float32) / PreTrainingSettings.decay_total_iters
+    if step < warmup_iters:
+        return step / warmup_iters  # Linear warmup
+    elif step >= decay_start_iter:
+        progress = torch.tensor((step - decay_start_iter), dtype=torch.float32) / decay_total_iters
         return max(0.0, 0.5 * (1.0 + torch.cos(progress * torch.pi)).item())  # Cosine decay
     else:
         return 1.0
@@ -55,24 +56,28 @@ def init_weights(m):
         m.bias.data.fill_(0.01)
 
 def save_training_loss(training_step: int, training_loss: float, accuracy: float):
+    os.makedirs('./checkpoints', exist_ok=True)
     with open('./checkpoints/training_loss.csv', 'a', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([training_step, accuracy, training_loss])
     return
 
 def save_validation_loss(training_step: int, accuracy: float, val_loss: float):
+    os.makedirs('./checkpoints', exist_ok=True)
     with open('./checkpoints/validation_loss.csv', 'a', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([training_step, accuracy, val_loss])
     return
 
 def save_learning_rate(training_step: int, lr: float):
+    os.makedirs('./checkpoints', exist_ok=True)
     with open('./checkpoints/learning_rate.csv', 'a', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([training_step, lr])
     return
 
 def save_gradient_norm(training_step: int, gradient_norm: float):
+    os.makedirs('./checkpoints', exist_ok=True)
     with open('./checkpoints/gradient_norm.csv', 'a', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([training_step, gradient_norm])
