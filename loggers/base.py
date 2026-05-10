@@ -4,7 +4,7 @@ from typing import Any, Dict
 class MetricLogger(ABC):
     """Interface for telemetry/metrics (Loss, Accuracy, etc.)."""
     @abstractmethod
-    def log_metrics(self, step: int, metrics: Dict[str, Any], phase: str = "train"):
+    def log_metrics(self, step: int, metrics: Dict[str, Any], task: str, prefix: str= ""):
         pass
 
 class AppLogger(ABC):

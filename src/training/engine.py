@@ -1,13 +1,10 @@
+import os
 import torch
 from torch.nn.utils import clip_grad_norm_
-from src.training.utils.training_loop_utils import (
-    save_checkpoint, 
-    save_training_loss, 
-    save_validation_loss, 
-    save_learning_rate, 
-    save_gradient_norm
-)
+from loggers.console_logger import ConsoleLogger
 from loggers.composite_logger import CompositeMetricLogger
+
+logger = ConsoleLogger(__name__)
 
 class Trainer:
     def __init__(self, model, optimizer, scheduler, criterion, device, settings):
@@ -101,5 +98,31 @@ class Trainer:
                 total_norm += p.grad.data.norm(2).item() ** 2
         return total_norm ** 0.5
 
-    def save(self, dataloader, epoch, step, path=None):
-        save_checkpoint(self.model, self.optimizer, self.scheduler, dataloader, epoch, step)
+    def save(self, dataloader, epoch, step, checkpoint_dir="checkpoints"):
+        """Saves the current trainer state to a checkpoint file."""
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        checkpoint_path = os.path.join(checkpoint_dir, f"epoch{epoch}_step{step}.pth")
+        
+        state = {
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
+            'dataloader_state_dict': dataloader.state_dict(),
+            'epoch': epoch,
+            'step': step
+        }
+        
+        torch.save(state, checkpoint_path)
+        logger.info(f"Saved checkpoint to: {checkpoint_path}")
+
+    def load(self, dataloader, checkpoint_path):
+        """Loads the trainer state from a checkpoint file."""
+        logger.info(f"Loading checkpoint from: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        dataloader.load_state_dict(checkpoint['dataloader_state_dict'])
+        
+        return checkpoint['epoch'], checkpoint['step']

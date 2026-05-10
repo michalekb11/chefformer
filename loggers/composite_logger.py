@@ -6,6 +6,6 @@ class CompositeMetricLogger(MetricLogger):
     def __init__(self, loggers: List[MetricLogger]):
         self.loggers = loggers
 
-    def log_metrics(self, step: int, metrics: Dict[str, Any], phase: str = "train"):
+    def log_metrics(self, step: int, metrics: Dict[str, Any], task: str, prefix: str = ""):
         for logger in self.loggers:
-            logger.log_metrics(step, metrics, phase)
+            logger.log_metrics(step, metrics, task, prefix)

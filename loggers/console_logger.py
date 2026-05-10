@@ -18,9 +18,9 @@ class ConsoleLogger(MetricLogger, AppLogger):
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
 
-    def log_metrics(self, step: int, metrics: Dict[str, Any], phase: str = "train"):
+    def log_metrics(self, step: int, metrics: Dict[str, Any], task: str, **kwargs):
         metrics_str = " | ".join([f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}" for k, v in metrics.items()])
-        self.logger.info(f"[{phase.upper()}] Step {step} | {metrics_str}")
+        self.logger.info(f"[{task.upper()}] Step {step} | {metrics_str}")
 
     def info(self, message: str):
         self.logger.info(message)

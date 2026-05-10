@@ -1,35 +1,5 @@
-import os
 import torch
 from torchtyping import TensorType
-import csv
-from loggers.console_logger import ConsoleLogger
-
-logger = ConsoleLogger(__name__)
-
-# Save a checkpoint
-def save_checkpoint(model, optimizer, scheduler, dataloader, epoch, step, checkpoint_dir="checkpoints"):
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch{epoch}_step{step}.pth")
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
-        'dataloader_state_dict': dataloader.state_dict(),
-        'epoch': epoch,
-        'step': step
-    }, checkpoint_path)
-    logger.info(f"Saved checkpoint to: {checkpoint_path}")
-    return
-
-# Load a checkpoint
-def load_checkpoint(model, optimizer, scheduler, dataloader, checkpoint_path):
-    logger.info(f"Loading checkpoint from: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    dataloader.load_state_dict(checkpoint['dataloader_state_dict'])
-    return checkpoint['epoch'], checkpoint['step']
 
 # Define warmup and decay schedule
 def lr_schedule(step, warmup_iters, decay_start_iter, decay_total_iters):
@@ -54,31 +24,3 @@ def init_weights(m):
     if isinstance(m, torch.nn.Linear):
         torch.nn.init.xavier_uniform_(m.weight) # or _normal_()
         m.bias.data.fill_(0.01)
-
-def save_training_loss(training_step: int, training_loss: float, accuracy: float):
-    os.makedirs('./checkpoints', exist_ok=True)
-    with open('./checkpoints/training_loss.csv', 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([training_step, accuracy, training_loss])
-    return
-
-def save_validation_loss(training_step: int, accuracy: float, val_loss: float):
-    os.makedirs('./checkpoints', exist_ok=True)
-    with open('./checkpoints/validation_loss.csv', 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([training_step, accuracy, val_loss])
-    return
-
-def save_learning_rate(training_step: int, lr: float):
-    os.makedirs('./checkpoints', exist_ok=True)
-    with open('./checkpoints/learning_rate.csv', 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([training_step, lr])
-    return
-
-def save_gradient_norm(training_step: int, gradient_norm: float):
-    os.makedirs('./checkpoints', exist_ok=True)
-    with open('./checkpoints/gradient_norm.csv', 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([training_step, gradient_norm])
-    return

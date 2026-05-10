@@ -15,7 +15,7 @@ def run(eval_only=False, task='pretrain', checkpoint_path=None):
     # Initialize Loggers
     logger = ConsoleLogger(__name__)
     csv_logger = CSVLogger()
-    metric_logger = CompositeMetricLogger([csv_logger])
+    metric_logger = CompositeMetricLogger([logger, csv_logger]) # Will print to console and save to CSV
     
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     logger.info(f"Using device: {device}")
