@@ -1,7 +1,22 @@
 . PHONY: help
 
 help:
-	@echo "Available targets are pulled from the makefiles/ directory"
+	@echo "Additional targets are pulled from the makefiles/ directory"
+
+install-chefformer:
+	pip install -e ".[test]"
+
+test-unit:
+	pytest -q tests/unit
+
+test-integration:
+	pytest -q tests/integration
+
+test-e2e:
+	pytest -q tests/e2e
+
+test-all:
+	pytest -q tests
 
 include makefiles/train.mk
-include makesfiles/inference.mk
+include makefiles/inference.mk

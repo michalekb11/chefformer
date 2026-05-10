@@ -30,14 +30,16 @@ class Embeddings(nn.Module):
 class AttentionHead(nn.Module):
     def __init__(self, model_settings: ModelSettings) -> None:
         super().__init__()
+        self.head_dim = model_settings.embedding_size // model_settings.num_attn_heads
+
         self.q = nn.Linear(in_features=model_settings.embedding_size, 
-                           out_features=model_settings.embedding_size // model_settings.num_attn_heads,
+                           out_features=self.head_dim,
                            bias=True)
         self.k = nn.Linear(in_features=model_settings.embedding_size, 
-                           out_features=model_settings.embedding_size // model_settings.num_attn_heads,
+                           out_features=self.head_dim,
                            bias=True)
         self.v = nn.Linear(in_features=model_settings.embedding_size, 
-                           out_features=model_settings.embedding_size // model_settings.num_attn_heads,
+                           out_features=self.head_dim,
                            bias=True) # After each projection shape will be (batch_size, seq_len, attn_input_dim) where attn_input_dim = hidden_dim // n_attn_heads
     
     def scaled_dot_product_attention(self,
@@ -61,6 +63,9 @@ class AttentionHead(nn.Module):
 class MultiHeadMaskedSelfAttention(nn.Module):
     def __init__(self, model_settings: ModelSettings) -> None:
         super().__init__()
+        assert model_settings.embedding_size % model_settings.num_attn_heads == 0, \
+            f"embedding_size ({model_settings.embedding_size}) must be divisible by num_attn_heads ({model_settings.num_attn_heads})"
+         
         self.attn_heads = nn.ModuleList([AttentionHead(model_settings) for _ in range(model_settings.num_attn_heads)])
         self.output_projection = nn.Linear(model_settings.embedding_size, model_settings.embedding_size, bias=True)
         self.dropout = nn.Dropout(model_settings.dropout_prob)
@@ -113,13 +118,7 @@ class Chefformer(nn.Module):
         self.DecoderBlocks = nn.ModuleList([DecoderBlock(model_settings) for _ in range(model_settings.num_layers)])
         self.layer_norm_final = nn.LayerNorm(model_settings.embedding_size)
         self.unembedding_matrix = nn.Linear(model_settings.embedding_size, model_settings.vocab_size)
-        #self.softmax = nn.Softmax(dim=-1) # Sounds like softmax is generally applied outside of the transformer due to CrossEntropyLoss expecting the raw logits, etc.
-        
-
-        # Only used for testing purposes
-        self.AttentionHead = AttentionHead(model_settings)
-        self.MultiHeadMaskedSelfAttention = MultiHeadMaskedSelfAttention(model_settings)
-        self.PositionWiseFeedForward = PositionWiseFeedForward(model_settings)
+        self.n_params = self._count_total_parameters()
 
     def forward(self, x: TensorType['batch_size', 'seq_len']):
         x = self.Embeddings(x) # Embeddings
@@ -127,37 +126,9 @@ class Chefformer(nn.Module):
             x = block(x)
         x = self.layer_norm_final(x) # Final layer norm
         x = self.unembedding_matrix(x) # Unembedding to convert back to (batch_size, seq_len, vocab_size)
-        #x = self.softmax(x) # Probability distribution over the vocabulary (for the next token).
         return x
-
-
-    # Helper functions to test components along the way
-    def get_embeddings(self, input_ids):
-        embeddings = self.Embeddings(input_ids)
-        return embeddings
     
-    def test_attention_head(self, input_ids):
-        embeddings = self.get_embeddings(input)
-        attn_output = self.AttentionHead(embeddings)
-        return attn_output
-    
-    def test_multihead_masked_self_attention(self, input_ids):
-        embeddings = self.get_embeddings(input)
-        attn_output = self.MultiHeadMaskedSelfAttention(embeddings)
-        return attn_output
-    
-    def test_feed_forward(self, input_ids):
-        embeddings = self.get_embeddings(input)
-        attn_output = self.MultiHeadMaskedSelfAttention(embeddings)
-        ff_output = self.PositionWiseFeedForward(attn_output)
-        return ff_output
-    
-    def test_decoder_block(self, input_ids):
-        embeddings = self.get_embeddings(input)
-        decoder_block_output = self.DecoderBlocks[0](embeddings)
-        return decoder_block_output
-    
-    def count_total_parameters(self):
+    def _count_total_parameters(self):
         total_params = 0
         for p in self.parameters():
             total_params += p.numel()
