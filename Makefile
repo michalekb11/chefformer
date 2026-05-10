@@ -6,6 +6,9 @@ help:
 install-chefformer:
 	pip install -e ".[test]"
 
+freeze-requirements:
+	pip freeze > requirements.lock
+
 test-unit:
 	pytest -q tests/unit
 

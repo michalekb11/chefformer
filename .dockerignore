@@ -1,0 +1,10 @@
+**/__pycache__
+*.pyc
+.git
+.gitignore
+.ipynb_checkpoints
+
+# Avoid baking large data and model weights into the image
+data/
+checkpoints/
+logs/

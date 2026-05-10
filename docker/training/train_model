@@ -1,0 +1,28 @@
+# Use an official PyTorch runtime as a parent image with CUDA support
+FROM pytorch/pytorch:2.10.0-cuda12.1-cudnn8-runtime
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy training scripts
+COPY pyproject.toml ./pyproject.toml
+COPY configs ./configs
+COPY src/shared/model ./src/shared/model
+COPY src/training ./src/training
+COPY loggers ./loggers
+
+# Install project dependencies
+RUN pip install --no-cache-dir "."
+
+# Update python path
+ENV PYTHONPATH="/app"
+
+# Set entrypoint
+ENTRYPOINT ["python", "src/training/train.py"]
+
+# UPDATE: To make use of Apple MPS, avoid using docker and use local python env directly.
