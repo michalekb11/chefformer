@@ -7,13 +7,15 @@ from loggers.composite_logger import CompositeMetricLogger
 logger = ConsoleLogger(__name__)
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, criterion, device, settings):
+    def __init__(self, model, optimizer, scheduler, criterion, device, settings, metric_logger=None, console_logger=None):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion
         self.device = device
         self.settings = settings
+        self.metric_logger = metric_logger
+        self.console_logger = console_logger or logger
         self.accumulated_loss = 0.0
 
     def _compute_loss(self, input_ids, attention_mask):
@@ -36,7 +38,7 @@ class Trainer:
         
         return loss, correct, total
 
-    def train_step(self, input_ids, attention_mask, step_count, metric_logger: CompositeMetricLogger):
+    def train_step(self, input_ids, attention_mask, step_count):
         self.model.train()
         loss, correct, total = self._compute_loss(input_ids, attention_mask)
         
@@ -64,7 +66,8 @@ class Trainer:
                 'learning_rate': self.scheduler.get_last_lr()[0],
                 'grad_norm': total_norm
             }
-            metric_logger.log_metrics(step_count + 1, metrics, self.settings.task, prefix="train")
+            if self.metric_logger:
+                self.metric_logger.log_metrics(step_count + 1, metrics, self.settings.task, prefix="train")
             
             self.accumulated_loss = 0.0
             return avg_loss, accuracy
@@ -98,10 +101,11 @@ class Trainer:
                 total_norm += p.grad.data.norm(2).item() ** 2
         return total_norm ** 0.5
 
-    def save(self, dataloader, epoch, step, checkpoint_dir="checkpoints"):
+    def save(self, dataloader, epoch, step, checkpoint_dir: str=None):
         """Saves the current trainer state to a checkpoint file."""
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        checkpoint_path = os.path.join(checkpoint_dir, f"epoch{epoch}_step{step}.pth")
+        task_dir = os.path.join(checkpoint_dir or self.settings.training_args.checkpoint_dir, self.settings.task)
+        os.makedirs(task_dir, exist_ok=True)
+        checkpoint_path = os.path.join(task_dir, f"epoch{epoch}_step{step}.pth")
         
         state = {
             'model_state_dict': self.model.state_dict(),
@@ -113,11 +117,11 @@ class Trainer:
         }
         
         torch.save(state, checkpoint_path)
-        logger.info(f"Saved checkpoint to: {checkpoint_path}")
+        self.console_logger.info(f"Saved checkpoint to: {checkpoint_path}")
 
     def load(self, dataloader, checkpoint_path):
         """Loads the trainer state from a checkpoint file."""
-        logger.info(f"Loading checkpoint from: {checkpoint_path}")
+        self.console_logger.info(f"Loading checkpoint from: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         
         self.model.load_state_dict(checkpoint['model_state_dict'])

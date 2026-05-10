@@ -1,17 +1,22 @@
 import torch
 import os
+import argparse
 from transformers import AutoTokenizer
 from configs.training.settings import pretraining_settings
 from src.shared.model.model import Chefformer
 from src.training.engine import Trainer
 from src.training.data_factory import get_dataloaders
-from src.training.utils.training_loop_utils import load_checkpoint, init_weights, lr_schedule
+from src.training.utils.training_loop_utils import init_weights, lr_schedule
 from torch.optim.lr_scheduler import LambdaLR
 from loggers.console_logger import ConsoleLogger
 from loggers.csv_logger import CSVLogger
 from loggers.composite_logger import CompositeMetricLogger
 
-def run(eval_only=False, task='pretrain', checkpoint_path=None):
+def train_model(
+        task: str, 
+        checkpoint_path: str=None,
+        eval_only: bool=False
+    ):
     # Initialize Loggers
     logger = ConsoleLogger(__name__)
     csv_logger = CSVLogger()
@@ -38,10 +43,11 @@ def run(eval_only=False, task='pretrain', checkpoint_path=None):
     # Resume from checkpoint
     start_epoch, start_step = 0, 0
     if checkpoint_path and os.path.exists(checkpoint_path):
-        # load_checkpoint should handle dataloader.load_state_dict() internally 
-        # to prevent the "exponential skip" issue.
-        start_epoch, start_step = load_checkpoint(model, optimizer, scheduler, train_loader, checkpoint_path)
-        logger.info(f"Resumed from {checkpoint_path} at epoch {start_epoch}, step {start_step}")
+        start_epoch, start_step = trainer.load(train_loader, checkpoint_path)
+        logger.info(f"Resuming from {checkpoint_path} at epoch {start_epoch}, step {start_step}")
+    else:
+        logger.info("Starting training from scratch. No checkpoint provided, or checkpoint path does not exist.")
+
 
     if eval_only:
         avg_loss, acc = trainer.evaluate(val_loader, pretraining_settings.validation_loop_steps)
@@ -55,9 +61,6 @@ def run(eval_only=False, task='pretrain', checkpoint_path=None):
             
             actual_step = start_step + step
             loss, acc = trainer.train_step(input_ids, attention_mask, actual_step)
-
-            #if loss is not None:
-            #    logger.info(f"Epoch {epoch} | Step {actual_step} | Loss: {loss:.4f} | Acc: {acc:.4f}")
 
             # Periodic Validation
             if (actual_step + 1) % pretraining_settings.validate_every == 0:
@@ -73,7 +76,15 @@ def run(eval_only=False, task='pretrain', checkpoint_path=None):
         start_step = 0
 
 if __name__ == '__main__':
-    # Example usages:
-    # Pretrain: run(task='pretrain')
-    # Eval only: run(eval_only=True, checkpoint_path='./checkpoints/latest.pth')
-    run(checkpoint_path='./checkpoints/checkpoint_epoch0_step12000.pth')
+    parser = argparse.ArgumentParser(description="Chefformer Training and Evaluation")
+    
+    parser.add_argument('--task', type=str, default=pretraining_settings.task,
+                        help='The training task to execute (defaults to settings value)')
+    parser.add_argument('--checkpoint_path', type=str, 
+                        default=getattr(pretraining_settings, 'checkpoint_path', None),
+                        help='Path to the checkpoint to load (defaults to settings value)')
+    parser.add_argument('--eval_only', action='store_true', default=False,
+                        help='If set, the script will only run evaluation (defaults to False)')
+    
+    args = parser.parse_args()
+    train_model(task=args.task, checkpoint_path=args.checkpoint_path, eval_only=args.eval_only)
