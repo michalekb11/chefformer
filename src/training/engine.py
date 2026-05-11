@@ -40,11 +40,13 @@ class Trainer:
 
     def train_step(self, input_ids, attention_mask, step_count):
         self.model.train()
-        loss, correct, total = self._compute_loss(input_ids, attention_mask)
         
-        # Gradient Accumulation
-        scaled_loss = loss / self.settings.gradient_accumulation_steps
-        scaled_loss.backward()
+        # Use Automatic Mixed Precision for speedup
+        with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
+            loss, correct, total = self._compute_loss(input_ids, attention_mask)
+            scaled_loss = loss / self.settings.gradient_accumulation_steps
+            scaled_loss.backward()
+            
         self.accumulated_loss += loss.item()
 
         if (step_count + 1) % self.settings.gradient_accumulation_steps == 0:
@@ -81,7 +83,9 @@ class Trainer:
 
         for i, (input_ids, attention_mask) in enumerate(val_loader):
             input_ids, attention_mask = input_ids.to(self.device), attention_mask.to(self.device)
-            loss, correct, tokens = self._compute_loss(input_ids, attention_mask)
+            
+            with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
+                loss, correct, tokens = self._compute_loss(input_ids, attention_mask)
             
             total_loss += (loss.item() * tokens)
             total_correct += correct

@@ -48,10 +48,10 @@ class AttentionHead(nn.Module):
                                      value: TensorType['batch_size', 'seq_length', 'attn_head_dim']):
         batch_size, seq_length, d_attn_head = query.shape[0], query.shape[1], query.shape[-1]
         attenion_weights = torch.bmm(query, torch.transpose(key, 1, 2)) # Q * K.T... (batch_size, seq_len, seq_len)
-        attenion_weights = attenion_weights / torch.sqrt(torch.tensor(d_attn_head, dtype=torch.float32)) # Scale the scores
+        attenion_weights = attenion_weights / (d_attn_head ** 0.5) # Scale the scores
 
-        mask = torch.tril(torch.ones(batch_size, seq_length, seq_length, dtype=torch.int)) # Gather attention matrix... (batch_size, seq_len, seq_len)
-        attenion_weights[mask == 0] = float('-inf') # Set scores to -inf where tokens are masked
+        mask = torch.tril(torch.ones(batch_size, seq_length, seq_length, device=query.device, dtype=torch.bool))
+        attenion_weights = attenion_weights.masked_fill(mask == 0, float('-inf')) # Set scores to -inf where tokens are masked
 
         attenion_weights = torch.softmax(attenion_weights, dim=-1) # Take softmax along rows (each token's row should sum to 1)
         return torch.bmm(attenion_weights, value) # Value multiplication with scores... (batch_size, seq_len, attn_head_output_dim)
