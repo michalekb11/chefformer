@@ -11,12 +11,17 @@ from torch.optim.lr_scheduler import LambdaLR
 from loggers.console_logger import ConsoleLogger
 from loggers.csv_logger import CSVLogger
 from loggers.composite_logger import CompositeMetricLogger
+from pydantic_settings import BaseSettings
 
 def train_model(
         task: str, 
+        settings: BaseSettings,
         checkpoint_path: str=None,
-        eval_only: bool=False
+        eval_only: bool=False,
     ):
+    # Settings look ups
+    training_args = settings.training_args
+
     # Initialize Loggers
     logger = ConsoleLogger(__name__)
     csv_logger = CSVLogger()
@@ -29,16 +34,25 @@ def train_model(
     tokenizer.pad_token = tokenizer.eos_token
 
     # Initialize Data
-    train_loader, val_loader = get_dataloaders(task, tokenizer, pretraining_settings)
+    train_loader, val_loader = get_dataloaders(task, tokenizer, settings=training_args)
 
     # Initialize Model & Optimization
-    model = Chefformer().to(device)
+    model = Chefformer(settings.model).to(device)
     model.apply(init_weights)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=pretraining_settings.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=training_args.learning_rate)
     scheduler = LambdaLR(optimizer, lr_lambda=lr_schedule)
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
-    trainer = Trainer(model, optimizer, scheduler, criterion, device, pretraining_settings, metric_logger, logger)
+    trainer = Trainer(
+        model, 
+        optimizer, 
+        scheduler, 
+        criterion, 
+        device, 
+        settings, 
+        metric_logger, 
+        logger
+    )
 
     # Resume from checkpoint
     start_epoch, start_step = 0, 0
@@ -48,14 +62,13 @@ def train_model(
     else:
         logger.info("Starting training from scratch. No checkpoint provided, or checkpoint path does not exist.")
 
-
     if eval_only:
-        avg_loss, acc = trainer.evaluate(val_loader, pretraining_settings.validation_loop_steps)
+        avg_loss, acc = trainer.evaluate(val_loader, training_args.validation_loop_steps)
         logger.info(f"Eval results - Loss: {avg_loss:.4f}, Acc: {acc:.4f}")
         return
 
     # Main Training Loop
-    for epoch in range(start_epoch, pretraining_settings.num_epochs):
+    for epoch in range(start_epoch, training_args.num_epochs):
         for step, (input_ids, attention_mask) in enumerate(train_loader):
             input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
             
@@ -63,12 +76,12 @@ def train_model(
             loss, acc = trainer.train_step(input_ids, attention_mask, actual_step)
 
             # Periodic Validation
-            if (actual_step + 1) % pretraining_settings.validate_every == 0:
-                val_loss, val_acc = trainer.evaluate(val_loader, pretraining_settings.validation_loop_steps)
+            if (actual_step + 1) % training_args.validate_every == 0:
+                val_loss, val_acc = trainer.evaluate(val_loader, training_args.validation_loop_steps)
                 logger.info(f"Validation at step {actual_step+1}: Loss {val_loss:.4f}, Acc {val_acc:.4f}")
 
             # Periodic Checkpointing
-            if (actual_step + 1) % pretraining_settings.save_checkpoint_every == 0:
+            if (actual_step + 1) % training_args.save_checkpoint_every == 0:
                 trainer.save(train_loader, epoch, actual_step + 1)
 
         # End of epoch checkpoint
@@ -78,13 +91,25 @@ def train_model(
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Chefformer Training and Evaluation")
     
-    parser.add_argument('--task', type=str, default=pretraining_settings.task,
-                        help='The training task to execute (defaults to settings value)')
-    parser.add_argument('--checkpoint_path', type=str, 
-                        default=getattr(pretraining_settings, 'checkpoint_path', None),
+    parser.add_argument('--task', type=str, required=True, choices=['pretrain'],
+                        help='The training task to execute')
+    parser.add_argument('--checkpoint_path', type=str,
                         help='Path to the checkpoint to load (defaults to settings value)')
     parser.add_argument('--eval_only', action='store_true', default=False,
                         help='If set, the script will only run evaluation (defaults to False)')
-    
     args = parser.parse_args()
-    train_model(task=args.task, checkpoint_path=args.checkpoint_path, eval_only=args.eval_only)
+
+    if args.task == 'pretrain':
+        settings = pretraining_settings
+    else:
+        raise ValueError(f"Unknown task: {args.task}")
+    
+    if not args.checkpoint_path:
+        args.checkpoint_path = getattr(settings, 'checkpoint_path', None)
+
+    train_model(
+        task=args.task, 
+        settings=settings,
+        checkpoint_path=args.checkpoint_path, 
+        eval_only=args.eval_only
+    )

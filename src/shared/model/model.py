@@ -3,14 +3,6 @@ from torch import nn
 from configs.shared.settings import ModelSettings
 from torchtyping import TensorType
 
-#device = torch.device("mps")
-
-########
-#self.tokenizer: AutoTokenizer = tokenizer
-#self.tokenizer.pad_token = self.tokenizer.eos_token
-#x = self.tokenizer(x, return_tensors='pt', padding=True, truncation=True) # Encodings
-########
-
 class Embeddings(nn.Module):
     def __init__(self, model_settings: ModelSettings) -> None:
         super().__init__()

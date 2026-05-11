@@ -7,13 +7,24 @@ from loggers.composite_logger import CompositeMetricLogger
 logger = ConsoleLogger(__name__)
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, criterion, device, settings, metric_logger=None, console_logger=None):
+    def __init__(
+            self, 
+            model, 
+            optimizer, 
+            scheduler, 
+            criterion, 
+            device, 
+            settings, 
+            metric_logger=None, 
+            console_logger=None
+        ):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion
         self.device = device
         self.settings = settings
+        self.training_args = settings.training_args
         self.metric_logger = metric_logger
         self.console_logger = console_logger or logger
         self.accumulated_loss = 0.0
@@ -44,23 +55,23 @@ class Trainer:
         # Use Automatic Mixed Precision for speedup
         with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
             loss, correct, total = self._compute_loss(input_ids, attention_mask)
-            scaled_loss = loss / self.settings.gradient_accumulation_steps
+            scaled_loss = loss / self.training_args.gradient_accumulation_steps
             scaled_loss.backward()
             
         self.accumulated_loss += loss.item()
 
-        if (step_count + 1) % self.settings.gradient_accumulation_steps == 0:
+        if (step_count + 1) % self.training_args.gradient_accumulation_steps == 0:
             # Gradient Norm Logging
             total_norm = self._get_grad_norm()
 
-            clip_grad_norm_(self.model.parameters(), self.settings.gradient_clipping)
+            clip_grad_norm_(self.model.parameters(), self.training_args.gradient_clipping)
             self.optimizer.step()
             self.scheduler.step()
             self.optimizer.zero_grad()
 
             # Logging
             accuracy = correct / total
-            avg_loss = self.accumulated_loss / self.settings.gradient_accumulation_steps
+            avg_loss = self.accumulated_loss / self.training_args.gradient_accumulation_steps
 
             metrics = {
                 'loss': avg_loss,
@@ -107,7 +118,7 @@ class Trainer:
 
     def save(self, dataloader, epoch, step, checkpoint_dir: str=None):
         """Saves the current trainer state to a checkpoint file."""
-        task_dir = os.path.join(checkpoint_dir or self.settings.training_args.checkpoint_dir, self.settings.task)
+        task_dir = os.path.join(checkpoint_dir or self.training_args.checkpoint_dir, self.settings.task)
         os.makedirs(task_dir, exist_ok=True)
         checkpoint_path = os.path.join(task_dir, f"epoch{epoch}_step{step}.pth")
         
