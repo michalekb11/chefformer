@@ -88,7 +88,7 @@ class Trainer:
         return None, None
 
     @torch.no_grad()
-    def evaluate(self, val_loader, max_steps):
+    def evaluate(self, val_loader, max_steps, train_step_count: int):
         self.model.eval()
         total_loss, total_correct, total_tokens = 0.0, 0, 0
 
@@ -107,6 +107,15 @@ class Trainer:
 
         avg_loss = total_loss / total_tokens
         accuracy = total_correct / total_tokens
+
+        metrics = {
+            'loss': avg_loss,
+            'accuracy': accuracy
+        }
+
+        if self.metric_logger:
+                self.metric_logger.log_metrics(train_step_count + 1, metrics, self.settings.task, prefix="val")
+
         return avg_loss, accuracy
 
     def _get_grad_norm(self):
