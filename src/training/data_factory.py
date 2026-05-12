@@ -18,21 +18,26 @@ def get_dataloaders(task, tokenizer, settings):
     
     # Wrap in Chunked Logic
     train_chunked = ChunkedTextDataset(
-        train_ds, tokenizer, chunk_size=512, overlap_size=50, shuffle=True
+        train_ds, tokenizer, chunk_size=512, overlap_size=50, shuffle=True, shuffle_buffer_size=500
     )
     val_chunked = ChunkedTextDataset(
-        val_ds, tokenizer, chunk_size=512, overlap_size=50, shuffle=True
+        val_ds, tokenizer, chunk_size=512, overlap_size=50, shuffle=True, shuffle_buffer_size=500
     )
 
     train_loader = StatefulDataLoader(
-        train_chunked, batch_size=settings.batch_size, 
-        collate_fn=batch_collator, num_workers=2,
+        train_chunked, 
+        batch_size=settings.batch_size, 
+        collate_fn=batch_collator, 
+        num_workers=0,
         snapshot_every_n_steps=settings.save_checkpoint_every
     )
     
     val_loader = StatefulDataLoader(
-        val_chunked, batch_size=settings.batch_size, 
-        collate_fn=batch_collator, num_workers=2
+        val_chunked, 
+        batch_size=settings.batch_size, 
+        collate_fn=batch_collator, 
+        num_workers=0,
+        pin_memory=True
     )
 
     return train_loader, val_loader

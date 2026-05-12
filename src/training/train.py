@@ -59,7 +59,7 @@ def train_model(
             decay_total_iters=training_args.decay_total_iters
         )
     )
-    criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    criterion = torch.nn.CrossEntropyLoss(reduction='sum', ignore_index=-100)
 
     trainer = Trainer(
         model, 
@@ -98,12 +98,12 @@ def train_model(
         os.makedirs(profiler_dir, exist_ok=True)
         logger.info(f"Profiling enabled. Trace will be saved to: {profiler_dir}")
         profiler_context = torch.profiler.profile(
-            schedule=torch.profiler.schedule(wait=2, warmup=2, active=5, repeat=1),
+            schedule=torch.profiler.schedule(wait=2, warmup=2, active=6, repeat=1),
             on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
             record_shapes=False,
             profile_memory=True,
             with_stack=True,
-            acc_events=False
+            acc_events=True
         )
 
     # Main Training Loop
@@ -127,10 +127,12 @@ def train_model(
                 if (global_step + 1) % training_args.validate_every == 0:
                     val_loss, val_acc = trainer.evaluate(val_loader, training_args.validation_loop_steps, global_step)
                     logger.info(f"Validation at step {global_step+1}: Loss {val_loss:.4f}, Acc {val_acc:.4f}")
+                    torch.mps.empty_cache()
 
                 # Periodic Checkpointing
                 if (global_step + 1) % training_args.save_checkpoint_every == 0:
                     trainer.save(train_loader, epoch, global_step + 1)
+                    torch.mps.empty_cache()
 
         # End of epoch checkpoint
         trainer.save(train_loader, epoch + 1, 0)

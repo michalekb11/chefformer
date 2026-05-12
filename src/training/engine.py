@@ -27,38 +27,58 @@ class Trainer:
         self.training_args = settings.training_args
         self.metric_logger = metric_logger
         self.console_logger = console_logger or logger
-        self.accumulated_loss = 0.0
+
+        # This is used so that a batch with 5 token sequences does not have >= influence than a batch with 512 token sequences
+        self.total_expected_tokens = torch.tensor(
+            self.training_args.batch_size * (self.settings.model.max_context_length - 1) * self.training_args.gradient_accumulation_steps,
+            device=self.device,
+            dtype=torch.float32
+        )
+        
+        # Initialize accumulators as tensors on the device to avoid CPU syncs
+        self.accumulated_loss = torch.tensor(0.0, device=self.device)
+        self.accumulated_correct = torch.tensor(0.0, device=self.device)
+        self.accumulated_total = torch.tensor(0.0, device=self.device)
 
     def _compute_loss(self, input_ids, attention_mask):
         """Standardized Next Token Prediction loss logic."""
         # Shift for causal prediction
-        labels = input_ids[:, 1:].contiguous()
-        inputs = input_ids[:, :-1].contiguous()
-        mask = attention_mask[:, 1:].contiguous().view(-1)
+        labels = input_ids[:, 1:].clone()
+        inputs = input_ids[:, :-1]
+
+        # Set masked tokens to -100 so CrossEntropyLoss ignores them
+        # This replaces the manual 'loss * mask' logic
+        labels[attention_mask[:, 1:] == 0] = -100
 
         logits = self.model(inputs)
         logits = logits.view(-1, logits.size(-1))
         labels = labels.view(-1)
 
-        loss = self.criterion(logits, labels)
-        loss = (loss * mask).sum() / mask.sum()
+        loss_sum = self.criterion(logits, labels)
+
+        with torch.no_grad():
+            predictions = torch.argmax(logits, dim=-1)
+            mask = (labels != -100)
+            correct = (predictions == labels).sum() # labels is already -100 where masked
+            total = mask.sum()
         
-        predictions = torch.argmax(logits, dim=-1)
-        correct = ((predictions == labels) * mask).sum().item()
-        total = mask.sum().item()
-        
-        return loss, correct, total
+        return loss_sum, correct, total
 
     def train_step(self, input_ids, attention_mask, step_count):
         self.model.train()
         
         # Use Automatic Mixed Precision for speedup
         with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-            loss, correct, total = self._compute_loss(input_ids, attention_mask)
-            scaled_loss = loss / self.training_args.gradient_accumulation_steps
-            scaled_loss.backward()
+            loss_sum, correct, total = self._compute_loss(input_ids, attention_mask)
+            scaled_loss = loss_sum / self.total_expected_tokens
+        
+        # Moved to outside autocase context
+        scaled_loss.backward()
             
-        self.accumulated_loss += loss.item()
+        # Accumulate metrics on device
+        self.accumulated_loss.add_(loss_sum.detach())
+        self.accumulated_correct.add_(correct)
+        self.accumulated_total.add_(total)
 
         if (step_count + 1) % self.training_args.gradient_accumulation_steps == 0:
             # Gradient Norm Logging
@@ -70,8 +90,9 @@ class Trainer:
             self.optimizer.zero_grad()
 
             # Logging
-            accuracy = correct / total
-            avg_loss = self.accumulated_loss / self.training_args.gradient_accumulation_steps
+            # Perform a single sync point here for logging
+            accuracy = (self.accumulated_correct / self.accumulated_total).item()
+            avg_loss = (self.accumulated_loss / self.total_expected_tokens).item()
 
             metrics = {
                 'loss': avg_loss,
@@ -82,7 +103,10 @@ class Trainer:
             if self.metric_logger:
                 self.metric_logger.log_metrics(step_count + 1, metrics, self.settings.task, prefix="train")
             
-            self.accumulated_loss = 0.0
+            # Reset accumulators on device
+            self.accumulated_loss.zero_()
+            self.accumulated_correct.zero_()
+            self.accumulated_total.zero_()
             return avg_loss, accuracy
         
         return None, None
@@ -90,23 +114,27 @@ class Trainer:
     @torch.no_grad()
     def evaluate(self, val_loader, max_steps: int, train_step_count: int):
         self.model.eval()
-        total_loss, total_correct, total_tokens = 0.0, 0, 0
+        
+        total_loss = torch.tensor(0.0, device=self.device)
+        total_correct = torch.tensor(0.0, device=self.device)
+        total_tokens = torch.tensor(0.0, device=self.device)
 
         for i, (input_ids, attention_mask) in enumerate(val_loader):
             input_ids, attention_mask = input_ids.to(self.device), attention_mask.to(self.device)
             
             with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-                loss, correct, tokens = self._compute_loss(input_ids, attention_mask)
+                loss_sum, correct, tokens = self._compute_loss(input_ids, attention_mask)
             
-            total_loss += (loss.item() * tokens)
-            total_correct += correct
-            total_tokens += tokens
+            # Vectorized accumulation on device
+            total_loss.add_(loss_sum)
+            total_correct.add_(correct)
+            total_tokens.add_(tokens)
 
             if (i + 1) >= max_steps:
                 break
 
-        avg_loss = total_loss / total_tokens
-        accuracy = total_correct / total_tokens
+        avg_loss = (total_loss / total_tokens).item()
+        accuracy = (total_correct / total_tokens).item()
 
         metrics = {
             'loss': avg_loss,
@@ -119,11 +147,12 @@ class Trainer:
         return avg_loss, accuracy
 
     def _get_grad_norm(self):
-        total_norm = 0.0
+        total_norm_sq = torch.tensor(0.0, device=self.device)
         for p in self.model.parameters():
             if p.grad is not None:
-                total_norm += p.grad.data.norm(2).item() ** 2
-        return total_norm ** 0.5
+                # Compute norm entirely on device to avoid per-parameter syncs
+                total_norm_sq += torch.norm(p.grad.detach(), 2) ** 2
+        return (total_norm_sq ** 0.5).item()
 
     def save(self, dataloader, epoch, step, checkpoint_dir: str=None):
         """Saves the current trainer state to a checkpoint file."""

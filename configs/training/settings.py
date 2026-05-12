@@ -29,19 +29,25 @@ def get_latest_checkpoint(checkpoint_dir: str, task: str) -> str | None:
     return os.path.join(target_dir, checkpoints[0][2])
 
 class PreTrainingArgs(BaseSettings):
-   batch_size: int = 16
-   learning_rate: float = 0.00007 # max learning rate if using scheduler with warm up and decay, originally 0.00005
+   """
+   Goal:
+   100,000 optimizer.step()'s (Iters)
+   Maps to 1,000,000 global steps
+   1,000,000 * 8 * 512 = ~4.1B tokens
+   """
+   batch_size: int = 8
+   learning_rate: float = 0.00004 # max learning rate if using scheduler with warm up and decay, originally 0.00005
    num_epochs: int = 1
-   weight_decay: float = 0.0005
+   #weight_decay: float = 0.0005 # using default weight decay and betas
    gradient_clipping: float = 5.0
-   gradient_accumulation_steps: int = 5
-   warmup_iters: int = 800 # gradient_accumulation_steps per iter
-   save_checkpoint_every: int = 1000
+   gradient_accumulation_steps: int = 10
+   warmup_iters: int = 3000 # gradient_accumulation_steps per iter
+   save_checkpoint_every: int = 20000 # (2000 iters)
    checkpoint_dir: str = "./checkpoints"
-   decay_start_iter: int = 4000
-   decay_total_iters: int = 3000
-   validation_loop_steps: int = 800
-   validate_every: int = 2000
+   decay_start_iter: int = 3000
+   decay_total_iters: int = 97000
+   validation_loop_steps: int = 400 # (equivalent of 40 iters)
+   validate_every: int = 30000 # (3000 iters)
 
 class PreTrainingSettings(BaseSettings):
     task: str = "pretrain"
