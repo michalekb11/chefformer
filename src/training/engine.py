@@ -88,7 +88,7 @@ class Trainer:
         return None, None
 
     @torch.no_grad()
-    def evaluate(self, val_loader, max_steps, train_step_count: int):
+    def evaluate(self, val_loader, max_steps: int, train_step_count: int):
         self.model.eval()
         total_loss, total_correct, total_tokens = 0.0, 0, 0
 

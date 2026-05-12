@@ -17,6 +17,8 @@ dependencies = [
     "pymongo==4.10.1",
     "torchtyping==0.1.5",
     "langchain-core==0.3.13",
+    "tensorboard==2.20.0",
+    "setuptools==81.0.0"
 ]
 
 [project.optional-dependencies]

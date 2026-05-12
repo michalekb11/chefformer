@@ -31,9 +31,10 @@ class ConsoleLogger(MetricLogger, AppLogger):
                 file_h.setFormatter(formatter)
                 self.logger.addHandler(file_h)
 
-    def log_metrics(self, step: int, metrics: Dict[str, Any], task: str, **kwargs):
+    def log_metrics(self, step: int, metrics: Dict[str, Any], task: str, prefix: str = ""):
         metrics_str = " | ".join([f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}" for k, v in metrics.items()])
-        self.logger.info(f"[{task.upper()}] Step {step} | {metrics_str}")
+        tag = f"{task.upper()}:{prefix.upper()}" if prefix else task.upper()
+        self.logger.info(f"[{tag}] Step {step} | {metrics_str}")
 
     def info(self, message: str):
         self.logger.info(message)
