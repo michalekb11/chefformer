@@ -1,6 +1,7 @@
 import torch
 import os
 import argparse
+import contextlib
 from transformers import AutoTokenizer
 from configs.training.settings import pretraining_settings
 from src.shared.model.model import Chefformer
@@ -19,6 +20,7 @@ def train_model(
         settings: BaseSettings,
         checkpoint_path: str=None,
         eval_only: bool=False,
+        profile: bool=False,
     ):
     # Settings look ups
     training_args = settings.training_args
@@ -89,22 +91,46 @@ def train_model(
         logger.info(f"Eval results - Loss: {avg_loss:.4f}, Acc: {acc:.4f}")
         return
 
+    # Initialize Profiler context
+    profiler_context = contextlib.nullcontext()
+    if profile:
+        profiler_dir = os.path.join(log_dir, "profiler")
+        os.makedirs(profiler_dir, exist_ok=True)
+        logger.info(f"Profiling enabled. Trace will be saved to: {profiler_dir}")
+        profiler_context = torch.profiler.profile(
+            schedule=torch.profiler.schedule(wait=2, warmup=2, active=5, repeat=1),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
+            record_shapes=False,
+            profile_memory=True,
+            with_stack=True,
+            acc_events=False
+        )
+
     # Main Training Loop
-    for epoch in range(start_epoch, training_args.num_epochs):
-        for step, (input_ids, attention_mask) in enumerate(train_loader):
-            input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
-            
-            global_step = start_step + step
-            loss, acc = trainer.train_step(input_ids, attention_mask, global_step)
+    with profiler_context as prof:
+        for epoch in range(start_epoch, training_args.num_epochs):
+            for step, (input_ids, attention_mask) in enumerate(train_loader):
+                input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
+                
+                global_step = start_step + step
+                loss, acc = trainer.train_step(input_ids, attention_mask, global_step)
 
-            # Periodic Validation
-            if (global_step + 1) % training_args.validate_every == 0:
-                val_loss, val_acc = trainer.evaluate(val_loader, training_args.validation_loop_steps, global_step)
-                logger.info(f"Validation at step {global_step+1}: Loss {val_loss:.4f}, Acc {val_acc:.4f}")
+                if profile:
+                    if device.type == "mps":
+                        torch.mps.synchronize()
+                    prof.step()
+                    if global_step >= start_step + 10:
+                        logger.info("Profiling cycle complete. Exiting...")
+                        return
 
-            # Periodic Checkpointing
-            if (global_step + 1) % training_args.save_checkpoint_every == 0:
-                trainer.save(train_loader, epoch, global_step + 1)
+                # Periodic Validation
+                if (global_step + 1) % training_args.validate_every == 0:
+                    val_loss, val_acc = trainer.evaluate(val_loader, training_args.validation_loop_steps, global_step)
+                    logger.info(f"Validation at step {global_step+1}: Loss {val_loss:.4f}, Acc {val_acc:.4f}")
+
+                # Periodic Checkpointing
+                if (global_step + 1) % training_args.save_checkpoint_every == 0:
+                    trainer.save(train_loader, epoch, global_step + 1)
 
         # End of epoch checkpoint
         trainer.save(train_loader, epoch + 1, 0)
@@ -119,6 +145,8 @@ if __name__ == '__main__':
                         help='Path to the checkpoint to load (defaults to settings value)')
     parser.add_argument('--eval_only', action='store_true', default=False,
                         help='If set, the script will only run evaluation (defaults to False)')
+    parser.add_argument('--profile', action='store_true', default=False,
+                        help='Run the PyTorch profiler for a few steps to analyze bottlenecks')
     args = parser.parse_args()
 
     if args.task == 'pretrain':
@@ -133,5 +161,6 @@ if __name__ == '__main__':
         task=args.task, 
         settings=settings,
         checkpoint_path=args.checkpoint_path, 
-        eval_only=args.eval_only
+        eval_only=args.eval_only,
+        profile=args.profile
     )
