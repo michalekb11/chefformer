@@ -1,7 +1,12 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 from configs.shared.settings import ModelSettings
 from torchtyping import TensorType
+from loggers.console_logger import ConsoleLogger
+
+logger = ConsoleLogger(__name__)
 
 class Embeddings(nn.Module):
     def __init__(self, model_settings: ModelSettings) -> None:
@@ -49,7 +54,14 @@ class AttentionHead(nn.Module):
         return torch.bmm(attenion_weights, value) # Value multiplication with scores... (batch_size, seq_len, attn_head_output_dim)
     
     def forward(self, hidden_state: TensorType['batch_size', 'seq_len', 'hidden_dim']):
-        return self.scaled_dot_product_attention(self.q(hidden_state), self.k(hidden_state), self.v(hidden_state))
+        #return self.scaled_dot_product_attention(self.q(hidden_state), self.k(hidden_state), self.v(hidden_state))
+        # Use optimized PyTorch kernel with causal masking for faster training
+        return F.scaled_dot_product_attention(
+            self.q(hidden_state), 
+            self.k(hidden_state), 
+            self.v(hidden_state),
+            is_causal=True
+        )
     
 
 class MultiHeadMaskedSelfAttention(nn.Module):
@@ -57,14 +69,41 @@ class MultiHeadMaskedSelfAttention(nn.Module):
         super().__init__()
         assert model_settings.embedding_size % model_settings.num_attn_heads == 0, \
             f"embedding_size ({model_settings.embedding_size}) must be divisible by num_attn_heads ({model_settings.num_attn_heads})"
-         
-        self.attn_heads = nn.ModuleList([AttentionHead(model_settings) for _ in range(model_settings.num_attn_heads)])
+        
+        # Old way
+        # self.attn_heads = nn.ModuleList([AttentionHead(model_settings) for _ in range(model_settings.num_attn_heads)])
+        self.n_heads = model_settings.num_attn_heads
+        self.head_dim = model_settings.embedding_size // model_settings.num_attn_heads
+        
+        # Single projection for all heads
+        self.qkv_projection = nn.Linear(model_settings.embedding_size, 3 * model_settings.embedding_size, bias=True)
         self.output_projection = nn.Linear(model_settings.embedding_size, model_settings.embedding_size, bias=True)
         self.dropout = nn.Dropout(model_settings.dropout_prob)
         
     def forward(self, hidden_state: TensorType['batch_size', 'seq_len', 'hidden_dim']):
-        attn_outputs = torch.cat([head(hidden_state) for head in self.attn_heads], dim=-1)
-        attn_outputs = self.dropout(attn_outputs)
+        # Old way
+        #attn_outputs = torch.cat([head(hidden_state) for head in self.attn_heads], dim=-1)
+        #attn_outputs = self.dropout(attn_outputs)
+        batch_size, seq_len, _ = hidden_state.shape
+        
+        # Project to Q, K, V for all heads at once
+        qkv = self.qkv_projection(hidden_state) # (B, S, 3 * E)
+        qkv = qkv.view(batch_size, seq_len, 3, self.n_heads, self.head_dim)
+        qkv = qkv.permute(2, 0, 3, 1, 4) # (3, B, H, S, D)
+        
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        # Flash attention / Memory Efficient Attention kernel
+        # This is MUCH faster than looping through heads
+        attn_outputs = F.scaled_dot_product_attention(
+            q, k, v,
+            is_causal=True,
+            dropout_p=self.dropout.p if self.training else 0.0
+        )
+        
+        # Reshape back to (B, S, E)
+        attn_outputs = attn_outputs.transpose(1, 2).reshape(batch_size, seq_len, -1)
+        
         return self.output_projection(attn_outputs)
 
 
@@ -111,11 +150,20 @@ class Chefformer(nn.Module):
         self.layer_norm_final = nn.LayerNorm(model_settings.embedding_size)
         self.unembedding_matrix = nn.Linear(model_settings.embedding_size, model_settings.vocab_size)
         self.n_params = self._count_total_parameters()
+        self.gradient_checkpointing = model_settings.gradient_checkpointing
+
+        if self.gradient_checkpointing:
+            logger.info("Gradient checkpointing enabled.")
+
+        logger.info(f"Total parameters: {self.n_params/1000**2:.1f}M ")
 
     def forward(self, x: TensorType['batch_size', 'seq_len']):
         x = self.Embeddings(x) # Embeddings
         for block in self.DecoderBlocks: # All of the decoder blocks (attention + feed forward)
-            x = block(x)
+            if self.gradient_checkpointing:
+                x = checkpoint(block, x, use_reentrant=False)
+            else:
+                x = block(x)
         x = self.layer_norm_final(x) # Final layer norm
         x = self.unembedding_matrix(x) # Unembedding to convert back to (batch_size, seq_len, vocab_size)
         return x
@@ -124,5 +172,4 @@ class Chefformer(nn.Module):
         total_params = 0
         for p in self.parameters():
             total_params += p.numel()
-        print(f"Total parameters: {total_params/1000**2:.1f}M ")
         return total_params

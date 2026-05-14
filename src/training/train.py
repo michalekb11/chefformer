@@ -98,7 +98,7 @@ def train_model(
         os.makedirs(profiler_dir, exist_ok=True)
         logger.info(f"Profiling enabled. Trace will be saved to: {profiler_dir}")
         profiler_context = torch.profiler.profile(
-            schedule=torch.profiler.schedule(wait=2, warmup=2, active=6, repeat=1),
+            schedule=torch.profiler.schedule(wait=10, warmup=10, active=30, repeat=1),
             on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
             record_shapes=False,
             profile_memory=True,
@@ -119,7 +119,7 @@ def train_model(
                     if device.type == "mps":
                         torch.mps.synchronize()
                     prof.step()
-                    if global_step >= start_step + 10:
+                    if global_step >= start_step + 50:
                         logger.info("Profiling cycle complete. Exiting...")
                         return
 

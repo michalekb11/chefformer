@@ -28,8 +28,7 @@ class Trainer:
         self.metric_logger = metric_logger
         self.console_logger = console_logger or logger
 
-        # This is used so that a batch with 5 token sequences does not have >= influence than a batch with 512 token sequences
-        self.total_expected_tokens = torch.tensor(
+        self.grad_scale_factor = torch.tensor(
             self.training_args.batch_size * (self.settings.model.max_context_length - 1) * self.training_args.gradient_accumulation_steps,
             device=self.device,
             dtype=torch.float32
@@ -70,18 +69,18 @@ class Trainer:
         # Use Automatic Mixed Precision for speedup
         with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
             loss_sum, correct, total = self._compute_loss(input_ids, attention_mask)
-            scaled_loss = loss_sum / self.total_expected_tokens
+            # Calculate theoretical max for gradient scaling consistent with global batch size but we use accumulated_total for the actual reported loss metric.
+            scaled_loss = loss_sum / self.grad_scale_factor
         
-        # Moved to outside autocase context
         scaled_loss.backward()
             
         # Accumulate metrics on device
-        self.accumulated_loss.add_(loss_sum.detach())
+        self.accumulated_loss.add_(loss_sum.detach()) 
         self.accumulated_correct.add_(correct)
         self.accumulated_total.add_(total)
 
         if (step_count + 1) % self.training_args.gradient_accumulation_steps == 0:
-            # Gradient Norm Logging
+            # Calculate norm before clipping and zeroing to see the "true" gradient magnitude
             total_norm = self._get_grad_norm()
 
             clip_grad_norm_(self.model.parameters(), self.training_args.gradient_clipping)
@@ -91,8 +90,8 @@ class Trainer:
 
             # Logging
             # Perform a single sync point here for logging
-            accuracy = (self.accumulated_correct / self.accumulated_total).item()
-            avg_loss = (self.accumulated_loss / self.total_expected_tokens).item()
+            accuracy = (self.accumulated_correct / self.accumulated_total).item() if self.accumulated_total > 0 else 0.0
+            avg_loss = (self.accumulated_loss / self.accumulated_total).item() if self.accumulated_total > 0 else 0.0
 
             metrics = {
                 'loss': avg_loss,

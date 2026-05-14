@@ -8,3 +8,4 @@ class ModelSettings(BaseSettings):
     num_attn_heads: int = 12
     dropout_prob: float = 0.1
     vocab_size: int = 50257
+    gradient_checkpointing: bool = False

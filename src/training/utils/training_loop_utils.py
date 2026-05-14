@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from torchtyping import TensorType
 
 # Define warmup and decay schedule
@@ -20,7 +21,15 @@ def batch_collator(batch: list[(TensorType['max_context_length'], TensorType['ma
     return input_ids, attention_mask
 
 def init_weights(m):
-    """Apply Xavier weight initialization to all linear layers in the model"""
-    if isinstance(m, torch.nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight) # or _normal_()
-        m.bias.data.fill_(0.01)
+    """
+    Standard Transformer initialization:
+    - Linear/Embedding: Normal(0, 0.02)
+    - LayerNorm: weight=1, bias=0
+    """
+    if isinstance(m, (nn.Linear, nn.Embedding)):
+        nn.init.normal_(m.weight, mean=0.0, std=0.02)
+        if isinstance(m, nn.Linear) and m.bias is not None:
+            nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.LayerNorm):
+        nn.init.zeros_(m.bias)
+        nn.init.ones_(m.weight)

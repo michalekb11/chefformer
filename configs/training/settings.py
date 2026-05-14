@@ -30,24 +30,28 @@ def get_latest_checkpoint(checkpoint_dir: str, task: str) -> str | None:
 
 class PreTrainingArgs(BaseSettings):
    """
-   Goal:
-   100,000 optimizer.step()'s (Iters)
-   Maps to 1,000,000 global steps
-   1,000,000 * 8 * 512 = ~4.1B tokens
+   Goal: ~150 Million tokens total. 
+    Fast execution, green memory footprint, and visible learning.
+    
+    Mathematical breakdown:
+    - Tokens per iter: 6 batch_size * 50 accumulation * 512 seq_len = 153,600 tokens.
+    - Total iters: 1,000 optimizer steps.
+    - Total global steps: 1000 * 50 = 50,000 global steps.
+    - Total tokens: 1,000 * 131,072 = 131,072,000 tokens (~131M).
    """
-   batch_size: int = 8
+   batch_size: int = 6
    learning_rate: float = 0.00004 # max learning rate if using scheduler with warm up and decay, originally 0.00005
    num_epochs: int = 1
    #weight_decay: float = 0.0005 # using default weight decay and betas
-   gradient_clipping: float = 5.0
-   gradient_accumulation_steps: int = 10
-   warmup_iters: int = 3000 # gradient_accumulation_steps per iter
-   save_checkpoint_every: int = 20000 # (2000 iters)
+   gradient_clipping: float = 3.0
+   gradient_accumulation_steps: int = 50
+   warmup_iters: int = 100 # gradient_accumulation_steps per iter
+   save_checkpoint_every: int = 5000 # (100 iters)
    checkpoint_dir: str = "./checkpoints"
-   decay_start_iter: int = 3000
-   decay_total_iters: int = 97000
-   validation_loop_steps: int = 400 # (equivalent of 40 iters)
-   validate_every: int = 30000 # (3000 iters)
+   decay_start_iter: int = 100
+   decay_total_iters: int = 900
+   validation_loop_steps: int = 800 # (equivalent of 8 iters)
+   validate_every: int = 5000 # (3000 iters)
 
 class PreTrainingSettings(BaseSettings):
     task: str = "pretrain"
