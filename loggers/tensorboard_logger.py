@@ -1,3 +1,4 @@
+import torch
 from torch.utils.tensorboard import SummaryWriter
 from typing import Any, Dict
 from loggers.base import MetricLogger
@@ -14,8 +15,16 @@ class TensorBoardLogger(MetricLogger):
     def log_metrics(self, step: int, metrics: Dict[str, Any], task: str, prefix: str = ""):
         for k, v in metrics.items():
             tag = f"{prefix}/{k}" if prefix else k
-            if isinstance(v, (int, float)):
-                self.writer.add_scalar(tag, v, step)
+            
+            # Robustly handle Tensors, Numpy scalars, and Python primitives
+            if torch.is_tensor(v):
+                v = v.item()
+            
+            if isinstance(v, (int, float)) or hasattr(v, "__float__"):
+                self.writer.add_scalar(tag, float(v), step)
+        
+        # Force flush to ensure sparse metrics (like validation) appear immediately
+        self.writer.flush()
 
     def close(self):
         self.writer.close()

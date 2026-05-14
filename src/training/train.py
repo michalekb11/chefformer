@@ -87,8 +87,7 @@ def train_model(
     metric_logger.loggers.append(tb_logger) # Should modify the metric_logger passed into Trainer
 
     if eval_only:
-        avg_loss, acc = trainer.evaluate(val_loader, training_args.validation_loop_steps)
-        logger.info(f"Eval results - Loss: {avg_loss:.4f}, Acc: {acc:.4f}")
+        trainer.evaluate(val_loader, training_args.validation_loop_steps, start_step)
         return
 
     # Initialize Profiler context
@@ -125,8 +124,7 @@ def train_model(
 
                 # Periodic Validation
                 if (global_step + 1) % training_args.validate_every == 0:
-                    val_loss, val_acc = trainer.evaluate(val_loader, training_args.validation_loop_steps, global_step)
-                    logger.info(f"Validation at step {global_step+1}: Loss {val_loss:.4f}, Acc {val_acc:.4f}")
+                    trainer.evaluate(val_loader, training_args.validation_loop_steps, global_step + 1)
                     torch.mps.empty_cache()
 
                 # Periodic Checkpointing

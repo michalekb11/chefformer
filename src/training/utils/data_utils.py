@@ -3,6 +3,9 @@ import re
 import torch
 from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer
+from loggers.console_logger import ConsoleLogger
+
+logger = ConsoleLogger(__name__)
 
 class TextCleaner:
     def __init__(self) -> None:
@@ -55,28 +58,65 @@ class ChunkedTextDataset(IterableDataset):
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
 
+        # State variables for checkpointing
+        self.num_examples_seen = 0
+        self.token_id_buffer = []
+        self.attn_mask_buffer = []
+
         if shuffle:
             self.dataset = self.dataset.shuffle(seed=42, buffer_size=shuffle_buffer_size)
+        
+    def state_dict(self):
+        """Returns the current state of the dataset for checkpointing."""
+        return {
+            "num_examples_seen": self.num_examples_seen,
+            "token_id_buffer": self.token_id_buffer,
+            "attn_mask_buffer": self.attn_mask_buffer,
+        }
 
+    def load_state_dict(self, state_dict):
+        """Restores the dataset state from a checkpoint."""
+        if state_dict:
+            self.num_examples_seen = state_dict.get("num_examples_seen", 0)
+            self.token_id_buffer = state_dict.get("token_id_buffer", [])
+            self.attn_mask_buffer = state_dict.get("attn_mask_buffer", [])
 
     def __iter__(self):
-        token_id_buffer, attn_mask_buffer = [], []
-        for example in self.dataset:
-            tokenized_example = self.tokenizer(example["text"] + self.tokenizer.eos_token, padding=False, truncation=True) # keep as list for now; also, padding not necessary since all sequences yielded will be length 512
+        # Efficiently skip examples if we are resuming
+        ds_to_iter = self.dataset
+        if self.num_examples_seen > 0:
+            if hasattr(ds_to_iter, 'skip'):
+                logger.info(f"Utilizing datasets `skip` method to fast forward {self.num_examples_seen} examples.")
+                ds_to_iter = ds_to_iter.skip(self.num_examples_seen)
+            else:
+                # Fallback for datasets without a native skip method
+                logger.info(f"Falling back to unoptimized fast forward method for {self.num_examples_seen} examples.")
+                it = iter(ds_to_iter)
+                for _ in range(self.num_examples_seen):
+                    next(it)
+                ds_to_iter = it
 
-            # Accumulate data in buffers
-            token_id_buffer.extend(tokenized_example["input_ids"])
-            attn_mask_buffer.extend(tokenized_example["attention_mask"])
+        for example in ds_to_iter:
+            self.num_examples_seen += 1
+            tokenized_example = self.tokenizer(example["text"] + self.tokenizer.eos_token, padding=False, truncation=True)
+
+            self.token_id_buffer.extend(tokenized_example["input_ids"])
+            self.attn_mask_buffer.extend(tokenized_example["attention_mask"])
             
             # Tokenize in chunks of chunk_size
-            while len(token_id_buffer) >= self.chunk_size:
-               # Extract a chunk
-                chunk_ids = token_id_buffer[:self.chunk_size]
-                chunk_attention = attn_mask_buffer[:self.chunk_size]
+            while len(self.token_id_buffer) >= self.chunk_size:
+                # Extract a chunk
+                chunk_ids = self.token_id_buffer[:self.chunk_size]
+                chunk_attention = self.attn_mask_buffer[:self.chunk_size]
                 
                 # Remove used portion from the buffer
-                token_id_buffer = token_id_buffer[self.chunk_size - self.overlap_size:]
-                attn_mask_buffer = attn_mask_buffer[self.chunk_size - self.overlap_size:]
+                self.token_id_buffer = self.token_id_buffer[self.chunk_size - self.overlap_size:]
+                self.attn_mask_buffer = self.attn_mask_buffer[self.chunk_size - self.overlap_size:]
                 
                 # Convert to tensors and yield
                 yield torch.tensor(chunk_ids, dtype=torch.long), torch.tensor(chunk_attention, dtype=torch.long)
+        
+        # Reset state for the next epoch
+        self.num_examples_seen = 0
+        self.token_id_buffer = []
+        self.attn_mask_buffer = []

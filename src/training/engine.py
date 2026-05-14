@@ -1,5 +1,6 @@
 import os
 import torch
+from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
 from loggers.console_logger import ConsoleLogger
 from loggers.composite_logger import CompositeMetricLogger
@@ -118,19 +119,21 @@ class Trainer:
         total_correct = torch.tensor(0.0, device=self.device)
         total_tokens = torch.tensor(0.0, device=self.device)
 
-        for i, (input_ids, attention_mask) in enumerate(val_loader):
-            input_ids, attention_mask = input_ids.to(self.device), attention_mask.to(self.device)
-            
-            with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-                loss_sum, correct, tokens = self._compute_loss(input_ids, attention_mask)
-            
-            # Vectorized accumulation on device
-            total_loss.add_(loss_sum)
-            total_correct.add_(correct)
-            total_tokens.add_(tokens)
+        with tqdm(total=max_steps, desc="Evaluating", leave=False) as pbar:
+            for i, (input_ids, attention_mask) in enumerate(val_loader):
+                input_ids, attention_mask = input_ids.to(self.device), attention_mask.to(self.device)
+                
+                with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
+                    loss_sum, correct, tokens = self._compute_loss(input_ids, attention_mask)
+                
+                # Vectorized accumulation on device
+                total_loss.add_(loss_sum)
+                total_correct.add_(correct)
+                total_tokens.add_(tokens)
 
-            if (i + 1) >= max_steps:
-                break
+                pbar.update(1)
+                if (i + 1) >= max_steps:
+                    break
 
         avg_loss = (total_loss / total_tokens).item()
         accuracy = (total_correct / total_tokens).item()
@@ -141,7 +144,7 @@ class Trainer:
         }
 
         if self.metric_logger:
-                self.metric_logger.log_metrics(train_step_count + 1, metrics, self.settings.task, prefix="val")
+            self.metric_logger.log_metrics(train_step_count, metrics, self.settings.task, prefix="val")
 
         return avg_loss, accuracy
 

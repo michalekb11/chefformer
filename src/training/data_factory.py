@@ -36,8 +36,7 @@ def get_dataloaders(task, tokenizer, settings):
         val_chunked, 
         batch_size=settings.batch_size, 
         collate_fn=batch_collator, 
-        num_workers=0,
-        pin_memory=True
+        num_workers=0
     )
 
     return train_loader, val_loader

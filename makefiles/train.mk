@@ -6,7 +6,7 @@
 # 	.
 
 train-model:
-	python src/training/train.py $(ARGS)
+	python src/training/train.py --task $(TASK) $(ARGS)
 
 launch-tensorboard:
 	tensorboard --logdir $(LOGDIR) 
