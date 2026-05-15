@@ -1,4 +1,5 @@
 import os
+import math
 import torch
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -93,10 +94,12 @@ class Trainer:
             # Perform a single sync point here for logging
             accuracy = (self.accumulated_correct / self.accumulated_total).item() if self.accumulated_total > 0 else 0.0
             avg_loss = (self.accumulated_loss / self.accumulated_total).item() if self.accumulated_total > 0 else 0.0
+            perplexity = math.exp(min(avg_loss, 20)) # Cap at 20 to avoid float overflow
 
             metrics = {
                 'loss': avg_loss,
                 'accuracy': accuracy,
+                'perplexity': perplexity,
                 'learning_rate': self.scheduler.get_last_lr()[0],
                 'grad_norm': total_norm
             }
@@ -114,6 +117,11 @@ class Trainer:
     @torch.no_grad()
     def evaluate(self, val_loader, max_steps: int, train_step_count: int):
         self.model.eval()
+        
+        # Reset validation dataset state to ensure we evaluate on the same fixed subset every time.
+        # We target the dataset directly to avoid StatefulDataLoader's internal state requirements.
+        if hasattr(val_loader, 'dataset') and hasattr(val_loader.dataset, 'load_state_dict'):
+            val_loader.dataset.load_state_dict({'num_examples_seen': 0})
         
         total_loss = torch.tensor(0.0, device=self.device)
         total_correct = torch.tensor(0.0, device=self.device)
@@ -137,10 +145,12 @@ class Trainer:
 
         avg_loss = (total_loss / total_tokens).item()
         accuracy = (total_correct / total_tokens).item()
+        perplexity = math.exp(min(avg_loss, 20))
 
         metrics = {
             'loss': avg_loss,
-            'accuracy': accuracy
+            'accuracy': accuracy,
+            'perplexity': perplexity
         }
 
         if self.metric_logger:
