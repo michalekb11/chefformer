@@ -4,7 +4,6 @@ import torch
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
 from loggers.console_logger import ConsoleLogger
-from loggers.composite_logger import CompositeMetricLogger
 
 logger = ConsoleLogger(__name__)
 

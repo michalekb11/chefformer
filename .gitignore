@@ -176,3 +176,6 @@ checkpoints/
 
 # Logs
 logs/
+
+# Images for UI
+wallpaper/

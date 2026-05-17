@@ -83,7 +83,7 @@ def train_model(
         start_step = 0
 
     # Now that start_step is known, initialize TensorBoard with the purge_step
-    tb_logger = TensorBoardLogger(log_dir=log_dir, purge_step=start_step)
+    tb_logger = TensorBoardLogger(log_dir=log_dir, purge_step=start_step + 1)
     metric_logger.loggers.append(tb_logger) # Should modify the metric_logger passed into Trainer
 
     if eval_only:

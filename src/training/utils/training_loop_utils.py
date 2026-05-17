@@ -3,13 +3,14 @@ import torch.nn as nn
 from torchtyping import TensorType
 
 # Define warmup and decay schedule
-def lr_schedule(step, warmup_iters, decay_start_iter, decay_total_iters):
+def lr_schedule(step, warmup_iters, decay_start_iter, decay_total_iters, min_lr_ratio=0.1):
     """Should return a multiplier for the learning rate"""
     if step < warmup_iters:
         return step / warmup_iters  # Linear warmup
     elif step >= decay_start_iter:
         progress = torch.tensor((step - decay_start_iter), dtype=torch.float32) / decay_total_iters
-        return max(0.0, 0.5 * (1.0 + torch.cos(progress * torch.pi)).item())  # Cosine decay
+        # HARD CODE MIN LEARNING RATE 10% OF MAX
+        return max(min_lr_ratio, 0.5 * (1.0 + torch.cos(progress * torch.pi)).item())  # Cosine decay
     else:
         return 1.0
     
