@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from app.engine import TextGenerationService
+from src.inference.engine import TextGenerationService
 from configs.inference.settings import app_settings
 
 text_generator = TextGenerationService(model_checkpoint_path=app_settings.api.checkpoint_path)
