@@ -35,3 +35,6 @@ class ModelSettings(BaseSettings):
     dropout_prob: float = 0.1
     vocab_size: int = 50257
     gradient_checkpointing: bool = False
+
+class BasePromptSettings(BaseSettings):
+    base_prompt: str = "Write a recipe for the following dish: "
