@@ -36,7 +36,4 @@ class CSVLogger(MetricLogger):
         if not os.path.exists(self.filepath):
             df_new.to_csv(self.filepath, header=True, index=False)
         else:
-            # Append without header, and handle potentially new columns
-            # Note: For personal projects, mode='a' is fast. 
-            # If you add brand new metrics mid-run, you'd need to re-align columns.
             df_new.to_csv(self.filepath, mode='a', header=False, index=False)
