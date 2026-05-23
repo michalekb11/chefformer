@@ -27,6 +27,8 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest>=8.0.0",
+    "nltk==3.9.4",
+    "plotly==6.7.0"
 ]
 
 [tool.pytest.ini_options]
