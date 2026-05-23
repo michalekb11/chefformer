@@ -1,42 +1,71 @@
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer
-from src.shared.model.model import Chefformer
 from configs.inference.settings import app_settings
+from loggers.console_logger import ConsoleLogger
+import gc
+
+logger = ConsoleLogger(__name__)
 
 class TextGenerationService:
-    def __init__(self, model_checkpoint_path: str):
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        self.model = Chefformer(model_settings=app_settings.model).to(self.device)
-        
-        # Load the weights from the .pth checkpoint
-        if model_checkpoint_path:
-            checkpoint = torch.load(model_checkpoint_path, map_location=self.device)
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-        
+    def __init__(self, model: torch.nn.Module, tokenizer: AutoTokenizer, device: torch.device):
+        self.device = device
+        self.tokenizer = tokenizer
+        self.model = model.to(self.device)
         self.model.eval()
-
-    def base_generate(self, prompt: str, temperature: float, top_p: float, top_k: int, max_tokens: int, stop_sequences: list[str] | None = None) -> str:
-        input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
+        self.model.gradient_checkpointing = False
         
+    def update_model_weights(self, checkpoint_path: str) -> None:
+        """
+        Mutates the existing model weights in-place without reallocating 
+        architectural memory space on the hardware accelerator.
+        """
+        logger.info(f"Updating runtime weights via checkpoint: {checkpoint_path}")
+        try:
+            # Load to host memory (CPU) first to eliminate driver contention
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            
+            # Accommodate both raw state dicts and full training state dictionaries
+            state_dict = checkpoint.get("model_state_dict", checkpoint)
+            
+            # In-place injection
+            self.model.load_state_dict(state_dict)
+            self.model.to(self.device)
+            self.model.eval()
+            
+            logger.info("In-place weight mutation successful.")
+        except Exception as e:
+            logger.error(f"Critical failure loading weights from {checkpoint_path}: {str(e)}")
+            raise e
+        finally:
+            # Defensive memory sanitization
+            if 'checkpoint' in locals(): del checkpoint
+            if 'state_dict' in locals(): del state_dict
+            if self.device.type == "mps":
+                torch.mps.empty_cache()
+            gc.collect()
+
+    def base_generate(self, prompt: str, temperature: float=1.0, top_p: float=1.0, top_k: int=-1, max_tokens: int=512, stop_sequences: list[str] | None=None) -> str:
+        input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
         generated_tokens = []
 
         # Disable gradient calculation for pure inference
         with torch.no_grad(): 
             for _ in range(max_tokens):
                 # Forward Pass
-                logits = self.model(input_ids)
+                # Requesting only the last logit significantly reduces peak memory usage
+                logits = self.model(input_ids, last_token_only=True)
                 
                 # Extract logits for the final token in the sequence
-                next_token_logits = logits[0, -1, :]
+                next_token_logits = logits[0, -1, :].clone()
+                del logits # Explicitly delete the large tensor
                 
                 # Temperature Scaling
                 if temperature != 1.0:
                     temperature = max(temperature, 1e-5) # Prevent division by zero
                     next_token_logits = next_token_logits / temperature
                 
-                # 3. Top-K Filtering
+                # Top-K Filtering
                 if top_k > 0:
                     top_k_values, _ = torch.topk(next_token_logits, top_k, sorted=True)
                     min_top_k_value = top_k_values[-1]
@@ -65,7 +94,7 @@ class TextGenerationService:
                 
                 generated_tokens.append(next_token.item())
                 
-                # 6. Stop Condition Evaluation
+                # Stop Condition Evaluation
                 if next_token.item() == self.tokenizer.eos_token_id:
                     break
 
@@ -76,4 +105,8 @@ class TextGenerationService:
                 if input_ids.shape[1] >= app_settings.model.max_context_length:
                     break
 
-        return self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        output_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+            
+        return output_text

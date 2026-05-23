@@ -1,6 +1,6 @@
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
-from configs.shared.settings import ModelSettings, get_latest_checkpoint
+from configs.shared.settings import BasePromptSettings, ModelSettings, get_latest_checkpoint
 
 class FrontEndSettings(BaseSettings):
     wallpaper_path: str = "app/wallpaper/cuttingboard.png"
@@ -16,6 +16,7 @@ class AppSettings(BaseSettings):
     front_end: FrontEndSettings = FrontEndSettings()
     api: APISettings = APISettings()
     model: ModelSettings = ModelSettings()
+    prompt: BasePromptSettings = BasePromptSettings()
 
     @model_validator(mode='after')
     def sync_chat_urls(self) -> 'AppSettings':
@@ -28,7 +29,7 @@ class AppSettings(BaseSettings):
     def set_default_checkpoint(self) -> 'AppSettings':
         """Automatically discovers the latest checkpoint if path is not explicitly provided."""
         if self.api.checkpoint_path is None:
-            self.api.checkpoint_path = get_latest_checkpoint("./checkpoints", "pretrain")
+            self.api.checkpoint_path = get_latest_checkpoint("./checkpoints", "finetune")
         return self
 
 app_settings = AppSettings()

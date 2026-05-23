@@ -62,14 +62,14 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 st.title("👨‍🍳 Chefformer")
-st.caption("Prompt the model to generate text (or a recipe)!")
+st.caption("Prompt the model to generate a recipe!")
 
 # Sidebar Generation Parameters
 st.sidebar.header("Generation Settings")
 temperature = st.sidebar.slider("Temperature", 0.0, 2.0, 0.1, 0.05)
 top_p = st.sidebar.slider("Top P", 0.0, 1.0, 1.0, 0.05)
 top_k = st.sidebar.slider("Top K", 0, 500, 100, 1)
-max_tokens = st.sidebar.slider("Max Tokens", 1, 2048, 512, 1)
+max_tokens = st.sidebar.slider("Max Tokens", 1, 512, 512, 1)
 stop_seq_raw = st.sidebar.text_input("Stop Sequences (comma separated)", "")
 stop_sequences = [s.strip() for s in stop_seq_raw.split(",")] if stop_seq_raw else None
 
@@ -80,7 +80,7 @@ if "error" not in st.session_state:
     st.session_state.error = None
 
 # Chat Input
-if prompt := st.chat_input("Enter your prompt here..."):
+if prompt := st.chat_input("What are we cooking today?..."):
     # Clear previous history to start fresh for every prompt
     st.session_state.error = None
     st.session_state.messages = [{"role": "user", "content": prompt}]
@@ -90,7 +90,7 @@ if prompt := st.chat_input("Enter your prompt here..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Model is thinking..."):
+        with st.spinner("Model is cooking (pun intended)..."):
             try:
                 payload = {
                     "message": prompt,
