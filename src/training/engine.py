@@ -40,19 +40,21 @@ class Trainer:
         self.accumulated_correct = torch.tensor(0.0, device=self.device)
         self.accumulated_total = torch.tensor(0.0, device=self.device)
 
-    def _compute_loss(self, input_ids, attention_mask):
+    def _compute_loss(self, input_ids, attention_mask, labels=None):
         """Standardized Next Token Prediction loss logic."""
-        # Shift for causal prediction
-        labels = input_ids[:, 1:].clone()
-        inputs = input_ids[:, :-1]
-
-        # Set masked tokens to -100 so CrossEntropyLoss ignores them
-        # This replaces the manual 'loss * mask' logic
-        labels[attention_mask[:, 1:] == 0] = -100
+        if labels is None:
+            # Pre-training path: generate labels from input_ids
+            labels = input_ids[:, 1:].clone()
+            inputs = input_ids[:, :-1]
+            labels[attention_mask[:, 1:] == 0] = -100
+        else:
+            # Finetuning path: labels already contain prompt masking
+            inputs = input_ids[:, :-1]
+            labels = labels[:, 1:]
 
         logits = self.model(inputs)
-        logits = logits.view(-1, logits.size(-1))
-        labels = labels.view(-1)
+        logits = logits.reshape(-1, logits.size(-1))
+        labels = labels.reshape(-1)
 
         loss_sum = self.criterion(logits, labels)
 
@@ -64,12 +66,12 @@ class Trainer:
         
         return loss_sum, correct, total
 
-    def train_step(self, input_ids, attention_mask, step_count):
+    def train_step(self, input_ids, attention_mask, step_count, labels=None):
         self.model.train()
         
         # Use Automatic Mixed Precision for speedup
         with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-            loss_sum, correct, total = self._compute_loss(input_ids, attention_mask)
+            loss_sum, correct, total = self._compute_loss(input_ids, attention_mask, labels=labels)
             # Calculate theoretical max for gradient scaling consistent with global batch size but we use accumulated_total for the actual reported loss metric.
             scaled_loss = loss_sum / self.grad_scale_factor
         
@@ -87,7 +89,7 @@ class Trainer:
             clip_grad_norm_(self.model.parameters(), self.training_args.gradient_clipping)
             self.optimizer.step()
             self.scheduler.step()
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
 
             # Logging
             # Perform a single sync point here for logging
@@ -114,7 +116,7 @@ class Trainer:
         return None, None
 
     @torch.no_grad()
-    def evaluate(self, val_loader, max_steps: int, train_step_count: int):
+    def evaluate(self, val_loader, train_step_count: int, max_steps: int=None):
         self.model.eval()
         
         # Reset validation dataset state to ensure we evaluate on the same fixed subset every time.
@@ -126,12 +128,14 @@ class Trainer:
         total_correct = torch.tensor(0.0, device=self.device)
         total_tokens = torch.tensor(0.0, device=self.device)
 
-        with tqdm(total=max_steps, desc="Evaluating", leave=False) as pbar:
-            for i, (input_ids, attention_mask) in enumerate(val_loader):
+        with tqdm(total=max_steps or math.ceil(len(val_loader.dataset) / self.training_args.batch_size), desc="Evaluating", leave=False) as pbar:
+            for i, batch in enumerate(val_loader):
+                input_ids, attention_mask, labels = batch
                 input_ids, attention_mask = input_ids.to(self.device), attention_mask.to(self.device)
+                labels = labels.to(self.device) if labels is not None else None
                 
                 with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-                    loss_sum, correct, tokens = self._compute_loss(input_ids, attention_mask)
+                    loss_sum, correct, tokens = self._compute_loss(input_ids, attention_mask, labels=labels)
                 
                 # Vectorized accumulation on device
                 total_loss.add_(loss_sum)
@@ -139,7 +143,7 @@ class Trainer:
                 total_tokens.add_(tokens)
 
                 pbar.update(1)
-                if (i + 1) >= max_steps:
+                if max_steps and (i + 1) >= max_steps:
                     break
 
         avg_loss = (total_loss / total_tokens).item()
@@ -183,14 +187,25 @@ class Trainer:
         torch.save(state, checkpoint_path)
         self.console_logger.info(f"Saved checkpoint to: {checkpoint_path}")
 
-    def load(self, dataloader, checkpoint_path):
+    def load(self, dataloader, checkpoint_path, weights_only: bool = False):
         """Loads the trainer state from a checkpoint file."""
         self.console_logger.info(f"Loading checkpoint from: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        dataloader.load_state_dict(checkpoint['dataloader_state_dict'])
+        # Extract model state dict, handling both full training checkpoints and raw weights
+        model_state = checkpoint.get('model_state_dict', checkpoint)
+        self.model.load_state_dict(model_state)
         
-        return checkpoint['epoch'], checkpoint['step']
+        if weights_only:
+            self.console_logger.info("Weights-only mode enabled. Skipping optimizer, scheduler, and dataloader state.")
+            return 0, 0
+        
+        # Resume full training state if available
+        if 'optimizer_state_dict' in checkpoint:
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'scheduler_state_dict' in checkpoint:
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        if dataloader is not None and 'dataloader_state_dict' in checkpoint:
+            dataloader.load_state_dict(checkpoint['dataloader_state_dict'])
+        
+        return checkpoint.get('epoch', 0), checkpoint.get('step', 0)

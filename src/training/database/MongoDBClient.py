@@ -14,18 +14,18 @@ class MongoDBClient:
             self.db = None
             self.collection = None
 
-    # def update_many(self, recipes: list[Recipe], batch_size=1000):
-    #     total_batches = len(recipes) // batch_size + (1 if len(recipes) % batch_size else 0)
-    #     for i in range(total_batches):
-    #         batch = recipes[i * batch_size: (i + 1) * batch_size]
-    #         operations = [UpdateOne({'id': recipe.id}, {'$set': recipe.to_dict()}) for recipe in batch]
-    #         try:
-    #             self.collection.bulk_write(operations)
-    #         except Exception as e:
-    #             print(f"Error in batch {i}: {e.details}")
-    #         print(f"Batch {i + 1}/{total_batches} update complete.")
-    #     print("All batches completed.")
-    #     return
+    def update_many(self, recipes: list[Recipe], batch_size=1000):
+        total_batches = len(recipes) // batch_size + (1 if len(recipes) % batch_size else 0)
+        for i in range(total_batches):
+            batch = recipes[i * batch_size: (i + 1) * batch_size]
+            operations = [UpdateOne({'id': recipe.id}, {'$set': recipe.to_dict()}) for recipe in batch]
+            try:
+                self.collection.bulk_write(operations)
+            except Exception as e:
+                print(f"Error in batch {i}: {e.details}")
+            print(f"Batch {i + 1}/{total_batches} update complete.")
+        print("All batches completed.")
+        return
 
     def replace_db(self, recipes: list[Recipe]):
         # Clear the mongo db

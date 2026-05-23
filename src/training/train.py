@@ -3,7 +3,7 @@ import os
 import argparse
 import contextlib
 from transformers import AutoTokenizer
-from configs.training.settings import pretraining_settings
+from configs.training.settings import pretraining_settings, finetuning_settings
 from src.shared.model.model import Chefformer
 from src.training.engine import Trainer
 from src.training.data_factory import get_dataloaders
@@ -44,7 +44,16 @@ def train_model(
     tokenizer.pad_token = tokenizer.eos_token
 
     # Initialize Data
-    train_loader, val_loader = get_dataloaders(task, tokenizer, settings=training_args)
+    if hasattr(settings, 'prompt'):
+        base_prompt = settings.prompt.base_prompt
+    else:
+        base_prompt = None
+    train_loader, val_loader = get_dataloaders(
+        task, 
+        tokenizer, 
+        settings=training_args, 
+        base_prompt=base_prompt
+    )
 
     # Initialize Model & Optimization
     model = Chefformer(settings.model).to(device)
@@ -75,22 +84,30 @@ def train_model(
     # Resume from checkpoint
     start_epoch, start_step = 0, 0
     if checkpoint_path and os.path.exists(checkpoint_path):
-        start_epoch, start_step = trainer.load(train_loader, checkpoint_path)
-        logger.info(f"Resuming from {checkpoint_path} at epoch {start_epoch}, step {start_step}")
-        csv_logger.prepare_for_resume(start_step)
+        # Detect if we are loading weights from a different task (e.g., pretrain -> finetune)
+        # If the current task name isn't in the checkpoint path, we assume a weights-only transfer.
+        weights_only = task not in checkpoint_path
+        
+        start_epoch, start_step = trainer.load(train_loader, checkpoint_path, weights_only=weights_only)
+        
+        if weights_only:
+            logger.info(f"Transferred weights from {checkpoint_path}. Starting {task} from Epoch 0, Step 0.")
+        else:
+            logger.info(f"Resuming {task} from {checkpoint_path} at epoch {start_epoch}, step {start_step}")
+            csv_logger.prepare_for_resume(start_step)
     else:
-        logger.info("Starting training from scratch. No checkpoint provided, or checkpoint path does not exist.")
-        start_step = 0
+        logger.info(f"Starting {task} from scratch. No checkpoint provided, or path does not exist.")
 
     # Now that start_step is known, initialize TensorBoard with the purge_step
     tb_logger = TensorBoardLogger(log_dir=log_dir, purge_step=start_step + 1)
     metric_logger.loggers.append(tb_logger) # Should modify the metric_logger passed into Trainer
 
     if eval_only:
-        trainer.evaluate(val_loader, training_args.validation_loop_steps, start_step)
+        trainer.evaluate(val_loader, start_step, training_args.validation_loop_steps)
         return
 
     # Initialize Profiler context
+    global_step = start_step
     profiler_context = contextlib.nullcontext()
     if profile:
         profiler_dir = os.path.join(log_dir, "profiler")
@@ -108,11 +125,12 @@ def train_model(
     # Main Training Loop
     with profiler_context as prof:
         for epoch in range(start_epoch, training_args.num_epochs):
-            for step, (input_ids, attention_mask) in enumerate(train_loader):
+            for step, batch in enumerate(train_loader):
+                input_ids, attention_mask, labels = batch
                 input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
+                labels = labels.to(device) if labels is not None else None
                 
-                global_step = start_step + step
-                loss, acc = trainer.train_step(input_ids, attention_mask, global_step)
+                loss, acc = trainer.train_step(input_ids, attention_mask, global_step, labels=labels)
 
                 if profile:
                     if device.type == "mps":
@@ -122,24 +140,31 @@ def train_model(
                         logger.info("Profiling cycle complete. Exiting...")
                         return
 
+                global_step += 1
+
                 # Periodic Validation
-                if (global_step + 1) % training_args.validate_every == 0:
-                    trainer.evaluate(val_loader, training_args.validation_loop_steps, global_step + 1)
+                if global_step % training_args.validate_every == 0:
+                    trainer.evaluate(
+                        val_loader=val_loader, 
+                        train_step_count=global_step, 
+                        max_steps=training_args.validation_loop_steps
+                    )
                     torch.mps.empty_cache()
 
                 # Periodic Checkpointing
-                if (global_step + 1) % training_args.save_checkpoint_every == 0:
-                    trainer.save(train_loader, epoch, global_step + 1)
+                if global_step % training_args.save_checkpoint_every == 0:
+                    trainer.save(train_loader, epoch, global_step)
                     torch.mps.empty_cache()
 
-        # End of epoch checkpoint
-        trainer.save(train_loader, epoch + 1, 0)
-        start_step = 0
+            # End of epoch checkpoint (only save if we didn't JUST save on the last step)
+            if global_step % training_args.save_checkpoint_every != 0:
+                trainer.save(train_loader, epoch + 1, global_step)
+                torch.mps.empty_cache()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Chefformer Training and Evaluation")
     
-    parser.add_argument('--task', type=str, required=True, choices=['pretrain'],
+    parser.add_argument('--task', type=str, required=True, choices=['pretrain', 'finetune'],
                         help='The training task to execute')
     parser.add_argument('--checkpoint_path', type=str,
                         help='Path to the checkpoint to load (defaults to settings value)')
@@ -151,6 +176,8 @@ if __name__ == '__main__':
 
     if args.task == 'pretrain':
         settings = pretraining_settings
+    elif args.task == 'finetune':
+        settings = finetuning_settings
     else:
         raise ValueError(f"Unknown task: {args.task}")
     

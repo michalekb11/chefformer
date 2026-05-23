@@ -157,7 +157,7 @@ class Chefformer(nn.Module):
 
         logger.info(f"Total parameters: {self.n_params/1000**2:.1f}M ")
 
-    def forward(self, x: TensorType['batch_size', 'seq_len']):
+    def forward(self, x: TensorType['batch_size', 'seq_len'], last_token_only: bool = False):
         x = self.Embeddings(x) # Embeddings
         for block in self.DecoderBlocks: # All of the decoder blocks (attention + feed forward)
             if self.gradient_checkpointing:
@@ -165,6 +165,10 @@ class Chefformer(nn.Module):
             else:
                 x = block(x)
         x = self.layer_norm_final(x) # Final layer norm
+
+        if last_token_only:
+            x = x[:, -1:, :]
+
         x = self.unembedding_matrix(x) # Unembedding to convert back to (batch_size, seq_len, vocab_size)
         return x
     
