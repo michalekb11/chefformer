@@ -13,9 +13,9 @@ With a fixed 512-token context window, preventing OOM errors required extra life
 Early training iterations suffered from poor hardware utilization. The GPU frequently sat idle, like a line cook waiting for prep work.
 * **Fire:** Tensorboard profiler logs revealed a 4-5+ minute optimizer step, with the GPU working a small % of the time.
 * **Extinguishers:**
-   - Data pipeline: Tuned the `Dataloader(num_workers)` parameter to provide the fastest CPU processing. Implemented a chunking strategy with 50 token overlap during pretraining, ensuring each batch is full of useful tokens instead of padding tokens. During finetuning, grouped examples by token length to optimize the number of padding tokens in each batch. This allowed the GPU's computation to be spent on more meaningful tokens over the course of training.
-   - Eliminate synchronizations: Removed unnecessary device-to-host synchronizations (`.item()`, etc.) on loss tensors within the inner loop that were causing GPU to sit idle.
-   - Attention refactoring: After writing an `AttentionHead` class from scratch, pivoted to using built-in PyTorch multihead attention logic for faster forward passes.
+   - <u>Data pipeline:</u> Tuned the `Dataloader(num_workers)` parameter to provide the fastest CPU processing. Implemented a chunking strategy with 50 token overlap during pretraining, ensuring each batch is full of useful tokens instead of padding tokens. During finetuning, grouped examples by sequence length to optimize the number of padding tokens in each batch. This allowed the GPU's computation to be spent on more meaningful tokens over the course of training.
+   - <u>Eliminate synchronizations:</u> Removed unnecessary device-to-host synchronizations (`.item()`, etc.) on loss tensors within the inner loop that were causing GPU to sit idle.
+   - <u>Attention refactoring:</u> After writing an `AttentionHead` class from scratch, pivoted to using built-in PyTorch multihead attention logic for faster forward passes.
 * **Results:** These optimizations successfully compressed the optimizer step down from over 4 minutes to just **1.5 minutes** during pretraining and **20 seconds** during finetuning.
 
 ### Adjusting the seasoning: Hyperparameter and batch architecture
