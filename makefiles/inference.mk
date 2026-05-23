@@ -3,7 +3,3 @@ start-api:
 
 start-ui:
 	streamlit run app/ui.py
-
-# run-app:
-# 	$(MAKE) start-api &
-# 	$(MAKE) start-ui

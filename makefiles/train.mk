@@ -9,5 +9,4 @@ train-model:
 	python src/training/train.py --task $(TASK) $(ARGS)
 
 launch-tensorboard:
-	tensorboard --logdir $(LOGDIR) 
-	# Ex: tensorboard --logdir logs/pretrain
+	tensorboard --logdir $(LOGDIR)
