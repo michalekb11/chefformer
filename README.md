@@ -58,6 +58,7 @@ Chefformer features a **FastAPI** backend for inference and a **Streamlit** fron
 ## Enhancements
 * Scaling pretraining into the billions of tokens to allow the model the proper token budget to learn advanced semantic English understanding and reasoning.
 * Separation of environments & CI/CD workflow using GitHub Actions.
+* More robust testing framework.
 
 ## Usage
 1. Clone the repository
